@@ -44,6 +44,7 @@ Required environment variables:
 ```bash
 export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
 export ENCRYPTION_KEY="your-fernet-key"
+export UKRAINABILITY_USER_HASH_SALT="your-secret-hmac-salt"
 ```
 
 Generate a Fernet encryption key with:
@@ -57,6 +58,8 @@ Optional environment variables:
 ```bash
 export UKRAINABILITY_STORAGE_DIR="/home/ubuntu/kremenchuk"
 export UKRAINABILITY_CREDENTIALS_FILE="/home/ubuntu/kremenchuk/secure/credentials"
+export UKRAINABILITY_BOT_ERRORS_LOG="bot_errors.log"
+export UKRAINABILITY_FLOW_CONTROL_LOG="flow_control.log"
 ```
 
 `UKRAINABILITY_STORAGE_DIR` defaults to `/home/ubuntu/kremenchuk` to preserve
@@ -65,6 +68,15 @@ the existing deployment. The legacy credentials file may contain:
 ```bash
 export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
 export ENCRYPTION_KEY="your-fernet-key"
+export UKRAINABILITY_USER_HASH_SALT="your-secret-hmac-salt"
+```
+
+For key rotation, set `ENCRYPTION_KEYS` to a comma-separated list where the
+first key is active for new writes and later keys are accepted for decrypting
+historical data:
+
+```bash
+export ENCRYPTION_KEYS="new-fernet-key,old-fernet-key"
 ```
 
 See `.env.example` for a copyable template.
@@ -80,6 +92,14 @@ At startup, the bot creates the storage directory if needed. By default it uses:
 
 Survey response fields are encrypted before being written to SQLite. Voice
 messages are encrypted as `.enc` files.
+
+Back up the SQLite database and the key material together. Losing the Fernet
+key, retiring keys, or `UKRAINABILITY_USER_HASH_SALT` makes historical encrypted
+or pseudonymous data unusable. A simple SQLite backup can be made with:
+
+```bash
+sqlite3 /home/ubuntu/kremenchuk/responses_kremenchuk.db ".backup responses_kremenchuk.backup.db"
+```
 
 ## Development
 

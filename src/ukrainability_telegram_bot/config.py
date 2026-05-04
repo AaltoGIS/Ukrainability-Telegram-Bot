@@ -23,6 +23,8 @@ class AppConfig:
 
     telegram_bot_token: str
     encryption_key: str
+    user_hash_salt: str
+    retiring_encryption_keys: tuple[str, ...] = ()
     storage_dir: Path = Path(DEFAULT_STORAGE_DIR)
     credentials_file: Optional[Path] = Path(DEFAULT_CREDENTIALS_FILE)
     bot_errors_log: str = "bot_errors.log"
@@ -53,13 +55,25 @@ class AppConfig:
         credentials = _read_export_file(credentials_file)
 
         token = env.get("TELEGRAM_BOT_TOKEN") or credentials.get("TELEGRAM_BOT_TOKEN")
-        encryption_key = env.get("ENCRYPTION_KEY") or credentials.get("ENCRYPTION_KEY")
+        encryption_keys = _split_keys(
+            env.get("ENCRYPTION_KEYS") or credentials.get("ENCRYPTION_KEYS", "")
+        )
+        encryption_key = (
+            encryption_keys[0]
+            if encryption_keys
+            else env.get("ENCRYPTION_KEY") or credentials.get("ENCRYPTION_KEY")
+        )
+        retiring_encryption_keys = tuple(encryption_keys[1:])
+        user_hash_salt = env.get("UKRAINABILITY_USER_HASH_SALT") or credentials.get(
+            "UKRAINABILITY_USER_HASH_SALT"
+        )
 
         missing = [
             name
             for name, value in (
                 ("TELEGRAM_BOT_TOKEN", token),
                 ("ENCRYPTION_KEY", encryption_key),
+                ("UKRAINABILITY_USER_HASH_SALT", user_hash_salt),
             )
             if not value
         ]
@@ -72,6 +86,8 @@ class AppConfig:
         return cls(
             telegram_bot_token=str(token),
             encryption_key=str(encryption_key),
+            user_hash_salt=str(user_hash_salt),
+            retiring_encryption_keys=retiring_encryption_keys,
             storage_dir=storage_dir,
             credentials_file=credentials_file,
             bot_errors_log=env.get("UKRAINABILITY_BOT_ERRORS_LOG", "bot_errors.log"),
@@ -99,3 +115,7 @@ def _read_export_file(path: Path) -> Mapping[str, str]:
         values[key.strip()] = value.strip().strip("\"'")
 
     return values
+
+
+def _split_keys(value: str) -> tuple[str, ...]:
+    return tuple(key.strip() for key in value.split(",") if key.strip())

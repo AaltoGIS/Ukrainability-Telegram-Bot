@@ -43,3 +43,15 @@ def test_initialize_database_is_idempotent(tmp_path):
 
     with sqlite3.connect(db_file) as conn:
         assert conn.execute("SELECT count(*) FROM user_nicknames").fetchone()[0] == 0
+
+
+def test_table_columns_rejects_unknown_table(tmp_path):
+    db_file = tmp_path / "responses_kremenchuk.db"
+    initialize_database(db_file)
+
+    try:
+        table_columns(db_file, "responses; DROP TABLE responses")
+    except ValueError as exc:
+        assert "Unsupported table name" in str(exc)
+    else:
+        raise AssertionError("Expected unsafe table name to be rejected")

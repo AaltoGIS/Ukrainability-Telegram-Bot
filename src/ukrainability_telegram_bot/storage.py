@@ -120,7 +120,14 @@ def get_all_used_nicknames(db_file: Path) -> set[str]:
         return {row[0] for row in cursor.fetchall()}
 
 
+ALLOWED_TABLES = {"responses", "user_nicknames"}
+
+
 def table_columns(db_file: Path, table: str) -> Iterable[str]:
+    if table not in ALLOWED_TABLES:
+        allowed = ", ".join(sorted(ALLOWED_TABLES))
+        raise ValueError(f"Unsupported table name {table!r}; expected one of: {allowed}")
+
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         cursor = conn.execute(f"PRAGMA table_info({table})")
         return [row[1] for row in cursor.fetchall()]

@@ -18,22 +18,29 @@ import time
 import datetime
 import threading
 import sqlite3
-from cryptography.fernet import Fernet
-import hashlib
 import random
 import requests  # Add this line
 import queue
 import sys
+from pathlib import Path
 
 import telebot
 from telebot import types
 
 from .config import AppConfig, DEFAULT_STORAGE_DIR
+from .messages import messages
+from .pseudonym import hash_user_id
 from .security import build_fernet
+from .storage import initialize_database as initialize_storage_database
+from .voice import new_voice_filename, safe_nickname_directory
 
 
 class HandlerRegistry:
-    """Collect handler decorators until a real TeleBot is configured."""
+    """Collect handler decorators until a real TeleBot is configured.
+
+    `bind()` is intended to be called once at process startup. Calling it again
+    with a different TeleBot can duplicate handler registration.
+    """
 
     def __init__(self):
         self._handlers = []
@@ -84,18 +91,19 @@ def _configure_logging(config):
 def configure_runtime(config):
     """Configure global legacy runtime objects for one bot process."""
 
-    global token, local_storage_dir, voice_files_dir, db_file, fernet, bot, bot_username
+    global token, local_storage_dir, voice_files_dir, db_file, fernet, bot, bot_username, user_hash_salt
 
     _configure_logging(config)
     token = config.telegram_bot_token
     local_storage_dir = str(config.storage_dir)
     voice_files_dir = str(config.voice_files_dir)
     db_file = str(config.db_file)
+    user_hash_salt = config.user_hash_salt
 
     os.makedirs(local_storage_dir, exist_ok=True)
     os.makedirs(voice_files_dir, exist_ok=True)
 
-    fernet = build_fernet(config.encryption_key)
+    fernet = build_fernet(config.encryption_key, list(config.retiring_encryption_keys))
 
     real_bot = telebot.TeleBot(token, threaded=True)
     if isinstance(bot, HandlerRegistry):
@@ -115,6 +123,7 @@ flow_logger.setLevel(logging.INFO)
 token = None
 local_storage_dir = DEFAULT_STORAGE_DIR
 voice_files_dir = os.path.join(local_storage_dir, 'voice_messages')
+user_hash_salt = None
 
 
 # Initialize bot
@@ -138,6 +147,46 @@ db_file = os.path.join(local_storage_dir, 'responses_kremenchuk.db')
 
 # Encryption setup
 fernet = None  # Initialize global variable
+
+
+def get_user_hash(user_id):
+    return hash_user_id(user_id, user_hash_salt)
+
+
+def telegram_retry_after(error, default=3):
+    result_json = getattr(error, "result_json", None)
+    if isinstance(result_json, dict):
+        retry_after = result_json.get("parameters", {}).get("retry_after")
+        if retry_after is not None:
+            return retry_after
+    result = getattr(error, "result", None)
+    if isinstance(result, dict):
+        retry_after = result.get("parameters", {}).get("retry_after")
+        if retry_after is not None:
+            return retry_after
+    return default
+
+
+def redacted_coordinate(value):
+    try:
+        return round(float(value), 1)
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def callback_suffix(callback_data, prefix):
+    marker = f"{prefix}_"
+    if not callback_data.startswith(marker):
+        raise ValueError(f"Unexpected callback prefix for {prefix}")
+    return callback_data[len(marker):]
+
+
+def callback_index(callback_data, prefix, options):
+    suffix = callback_suffix(callback_data, prefix)
+    idx = int(suffix)
+    if idx < 0 or idx >= len(options):
+        raise IndexError(f"Callback index {idx} out of range for {prefix}")
+    return idx
 
 
 # Random nickname generation data
@@ -177,455 +226,13 @@ nouns = [
 ]
 
 # URLs for privacy notices and participant information
-PRIVACY_NOTICE_URL_EN = 'https://telegra.ph/Ukrainabilitys-Privacy-Notice-03-15'
-PARTICIPANT_INFORMATION_SHEET_URL_EN = 'https://telegra.ph/Participant-Information-Sheet-for-Ukrainability-project-03-15'
 
-PRIVACY_NOTICE_URL_UK = 'https://telegra.ph/Polіtika-konfіdencіjnostі-dlya-doslіdzhennya-Ukrainability-03-14'
-PARTICIPANT_INFORMATION_SHEET_URL_UK = 'https://telegra.ph/Іnformacіjnij-list-dlya-uchasnikіv-proektu-Ukrainability-03-14'
 
 
 # In[2]:
 
 
 # Messages dictionary
-messages = {
-    'en': {
-        'welcome': "Welcome! Please select a language.",
-        'select_language': "Please select a language:",
-        'language_selected': "Language set to English.",
-        'project_intro': f'''Participation confirmation
-Participation is voluntary. You may stop at any time, but information gathered until then can be used as described in the <a href="{PRIVACY_NOTICE_URL_EN}">privacy notice</a> and <a href="{PARTICIPANT_INFORMATION_SHEET_URL_EN}">participant information sheet</a>. Please do not participate if you are in 1) temporarily occupied territories or 2) areas near the frontline. Do not send information related to military activities. For persons aged 18+ only.
-
-By clicking 'I agree', I confirm that I am 18+ years old, have received sufficient information about the study, and consent to participate. My data will be processed according to GDPR and Ukrainian personal data protection law.''',
-        'consent_options': ["I agree", "I do not agree"],
-        'consent_given': (
-            "Thank you for agreeing to participate!\n\n"
-            "Your participation is anonymous. Your anonymised ID is {nickname}. "
-            "Be sure to remember this ID – it will unlock additional benefits for you after completing the survey."
-        ),
-        'consent_denied': "Thank you for your time. If you change your mind, you can restart the bot.",
-        'restart_button': "Restart",
-        'send_location': (
-            "This survey covers the area of the left bank waterfront of the Dnipro River"
-            " in the city of Kremenchuk and its surroundings. It may also include Student Park,"
-            " Prydniprovskyi Park, Yuvileinyi Park, and other places and areas within"
-            " walking distance of the waterfront. "
-            "Please send the location on the left bank waterfront where you spent some time outdoors,"
-            " or if it's a large area, just give an approximate location.\n\n"
-            "To do this:\n"
-            "1. Tap the attachment icon (📎) in the message bar.\n"
-            "2. Select 'Location'.\n"
-            "3. Move the map to the desired location.\n"
-            "4. Tap 'Send this location'.\n\n"
-            "Alternatively, if you prefer not to share coordinates, you can simply type the name "
-            "of the location (e.g., 'Student Park') as a text message."
-        ),
-        'please_send_location': (
-            "Invalid input. Please send the location as instructed.\n\n"
-            "To do this:\n"
-            "1. Tap the attachment icon (📎) in the message bar.\n"
-            "2. Select 'Location'.\n"
-            "3. Move the map to the desired location.\n"
-            "4. Tap 'Send this location'.\n\n"
-            "Alternatively, you can simply type the name of the location as a text message."
-        ),
-        'enjoyment_question': "How did you find your time spent at this place?",
-        'enjoyment_options': [
-            "Very enjoyable",
-            "Enjoyable",
-            "Neutral",
-            "Not enjoyable",
-            "Not enjoyable at all"
-        ],
-        'visitor_type_question': "Who would you recommend this place to?",
-        'visitor_type_options': [
-            "Solo visitors",
-            "Families",
-            "Couples",
-            "Groups of friends",
-            "People with pets",
-            "Other"
-        ],
-        'duration_question': "How much time did you spend in the area around this location during your visit?",
-        'duration_options': [
-            "Passing by or a short stop",
-            "1–2 hours visit",
-            "Most of the day",
-            "Part of a trip for a few days",
-            "Part of a longer stay for a few weeks or more",
-            "Prefer not to disclose"
-        ],
-        'invalid_rating': "Invalid input. Please select an option requested in the question.",
-        'purpose_visit': "What outdoor activities were your main reasons for visiting this place?",
-        'other_purpose': "Please specify your other purpose of visit. ",
-        'other_visitor_type': "Please specify who else would appreciate this place:",
-        'other_accessibility': "Please specify another way you traveled to this place:",
-        'other_changes': "Please specify what else has changed at this place:",
-        'other_wishlist': "Please specify what else you would like to improve or change:",
-        'other_kremenchuk': "Please specify your own situation:",
-        'regularity_question': "Do you visit this place regularly, occasionally, or is this your first time?",
-        'changes_question': "Have you noticed any differences in this place since the full-scale invasion?",
-        'changes_detail_question': "What exactly has changed? You can select multiple options.",
-        'wishlist_question': "Would you like to improve/change something in this place/area?",
-        'kremenchuk_question': "For how long do you live in Kremenchuk city? ",
-        'add_description': (
-            "We'd love to hear more about your experience. Please share any stories, feelings, or memorable moments from your visit. "
-            "You can type your response or send a voice message. The voice message will be transcribed to text for analysis, and the original message will be deleted immediately afterward to protect your privacy. If you'd prefer to skip and finish, please press 'Skip'."
-        ),
-        'thank_you': "Thank you! Your data has been received.",
-        'thank_you_lottery': "Thank you! Your data has been received. Good luck in the lottery!",
-        'thank_you_no_lottery': "Thank you! Your data has been received.",
-        'skip_button': "Skip",
-        'age_question': "Please select your age group:",
-        'gender_question': "Please select your gender:",
-        'occupation_question': "Please select your occupational status:",
-        'income_question': "Please select your monthly income level:",
-        'done_button': "Done",
-        'accessibility_question': "How did you travel to this place? Select all relevant options. ",
-        'accessibility_options': [
-            "By foot",
-            "By bicycle",
-            "By public transport",
-            "By car",
-            "By shared mobility (e.g., taxi)",
-            "Other"],
-        'continue_question': (
-            "Your anonymised ID is {nickname}. With your saved ID, you participate in a monthly lottery for a 1000 UAH certificate. Be sure to join our channel https://t.me/ukrainability and follow the lottery results on the first day of each month — you might be the next winner!"
-            "Would you like to submit another place or stop here?"
-        ),
-        'continue_options': ["Continue", "Stop"],
-        'location_received': "Location received",
-        'responses_so_far': "Your responses so far:",
-        'description_skipped': "Description skipped.",
-        'your_description': "Your description:",
-        'selected': "Selected:",
-        'unselected': "Unselected:",
-        'you_selected': "You selected:",
-        'voice_message_submitted': "Voice message submitted.",
-        'error_occurred': "An error occurred. Please try again later.",
-        'invalid_selection': "Invalid selection.",
-        'your_response': "Your response:",
-        'confirm_responses': "Please review your responses above. Do you confirm them or would like to modify anything?",
-        'modify_responses': "I want to modify my responses",
-        'confirm_submission': "I confirm my responses",
-        'select_questions_to_modify': "Please select the question(s) to modify your responses:",
-        'submission_confirmed': "Thank you! Your responses have been submitted.",
-        'done_button': "Done",
-        'please_send_text_or_voice': "Invalid input. Please send a text message or a voice message.",
-        'please_select_at_least_one': "Please select at least one option.",
-        'labels': {
-            'location': 'Location',
-            'enjoyment': 'Enjoyment',
-            'purpose_visit': 'Purpose of visit',
-            'regularity': 'Regularity',
-            'accessibility': 'Accessibility',
-            'noticed_changes': 'Noticed changes',
-            'changes_detail': 'Changes detail',
-            'wishlist': 'Improvements wished',
-            'kremenchuk': 'Time living in Kremenchuk',
-            'description': 'Description',
-            'age': 'Age',
-            'gender': 'Gender',
-            'occupation': 'Occupation',
-            'income': 'Income',
-            'visitor_type': 'Recommended for',
-            'duration_visit': 'Duration of visit',
-        },
-        'options': {
-            'purpose_visit': [
-                "Relaxation: nature, sunbathing, rest",
-                "Activity: walking, running, cycling",
-                "Professional sports or competitions",
-                "Communication: meetings, holidays, events",
-                "Gastronomy: barbecue, picnic",
-                "Excursions, educational activities",
-                "Bird watching, nature observation",
-                "Fishing",
-                "Gathering: mushrooms, berries, herbs",
-                "Gardening: plant care",
-                "Creativity: art, photography, performances",
-                "Spiritual practices and meditation",
-                "Other"
-            ],
-            'regularity': [
-                "Very frequently: several times a week",
-                "Frequently: several times a month",
-                "Regularly (multiple times a year or more)",
-                "Occasionally (once a year or less)",
-                "One-time visit",
-                "Visited before 2022 but not anymore",
-                "Prefer not to disclose"
-            ],
-            'noticed_changes': [
-                "Yes, positive changes",
-                "Yes, negative changes",
-                "No noticeable changes/I don't know"
-            ],
-            'changes_detail': [
-                "Environment (cleanliness, landscape)",
-                "Accessibility (e.g., transport, paths)",
-                "Services (e.g., maintenance)",
-                "Safety (perception, risks, etc.)",
-                "Number of visitors",
-                "Other"
-            ],
-            'wishlist': [
-                "Water quality in the river/lake",
-                "Cleaner air",
-                "Less noise",
-                "More shade, fountains in summer",
-                "More facilities and services",
-                "Better lighting at night",
-                "Pedestrian safety (traffic)",
-                "Safer pedestrian areas",
-                "More convenient transportation",
-                "Access for people with limited mobility",
-                "More greenery",
-                "Everything is fine, no suggestions",
-                "Other"
-            ],
-            'kremenchuk': [
-                "Less than 1 year",
-                "1-3 years",
-                "3-10 years",
-                "10-20 years",
-                "My whole life",
-                "I don't live in Kremenchuk",
-                "Other",
-                "Prefer not to disclose"
-            ],
-            'age': [
-                "18-25", "26-40", "41-60", "Above 60", "Prefer not to disclose"
-            ],
-            'gender': [
-                "Male", "Female", "Other", "Prefer not to disclose"
-            ],
-            'occupation': [
-                "Working", "Not working", "Student", "Retired", "Military service", "Other", "Prefer not to disclose"
-            ],
-            'income': [
-                "0-5000 UAH", "5001-10000 UAH", "10001-20000 UAH", "More than 20000 UAH", "Prefer not to disclose"
-            ],
-        },
-    },
-    'uk': {
-        'welcome': "Ласкаво просимо! Будь ласка, оберіть мову.",
-        'select_language': "Будь ласка, оберіть мову:",
-        'language_selected': "Мову встановлено на українську.",
-        'project_intro': f'''Підтвердження участі
-Участь є добровільною. Ви можете припинити в будь-який час, але вже зібрана інформація може використовуватись, як описано в <a href="{PRIVACY_NOTICE_URL_UK}">політиці конфіденційності</a> та <a href="{PARTICIPANT_INFORMATION_SHEET_URL_UK}">інформаційному листі учасника</a>. Не беріть участь, якщо ви на 1) тимчасово окупованих або 2) прифронтових територіях. Не надсилайте інформацію, пов'язану з воєнною активністю. Тільки для осіб від 18 років.
-
-Натискаючи «Я погоджуюсь», я підтверджую, що мені більше 18 років, я отримав(ла) достатньо інформації про дослідження та погоджуюсь взяти участь. Дані будуть оброблятись відповідно до європейського та українського законодавства про захист персональних даних.''',
-        'consent_options': ["Я згоден/згодна", "Я не згоден/не згодна"],
-        'consent_given': (
-            "Дякуємо за вашу згоду на участь!\n\n"
-            "Ваша участь є анонімною. Ваш анонімний ID: {nickname}. "
-            "Будь-ласка, запам'ятайте цей ID – він відкриє вам додаткові переваги після завершення опитування"
-        ),
-        'consent_denied': "Дякуємо за ваш час. Якщо ви передумаєте, ви можете перезапустити бота.",
-        'restart_button': "Перезапустити",
-        'send_location': (
-            "Дане опитування розглядає територію набережної лівого берега річки Дніпро в місті Кременчук "
-            "та на його околицях. Також можуть бути позначені Студентський парк, Придніпровський парк, "
-            "Ювілейний парк та інші місця та території в пішохідній доступності до набережної. "
-            "Будь ласка, надішліть місце на набережній лівого берега, де провели якийсь час на свіжому повітрі;"
-            " якщо це місце велике за площею, просто оберіть приблизну локацію.\n\n"
-            "Щоб зробити це:\n"
-            "1. Натисніть на іконку вкладення (📎) у рядку повідомлень.\n"
-            "2. Оберіть 'Розташування'.\n"
-            "3. Перемістіть карту до бажаного місця.\n"
-            "4. Натисніть 'Надіслати вибране розташування'.\n\n"
-            "Альтернативно, якщо вам важко знайти місце на карті, ви можете просто ввести назву "
-            "місця (наприклад, Студентський парк) як текстове повідомлення."
-        ),
-        'please_send_location': (
-            "Невірний формат. Будь ласка, надішліть локацію, як вказано в інструкції.\n\n"
-            "Щоб зробити це:\n"
-            "1. Натисніть на іконку вкладення (📎) у рядку повідомлень.\n"
-            "2. Оберіть 'Розташування'.\n"
-            "3. Перемістіть карту до бажаного місця.\n"
-            "4. Натисніть 'Надіслати вибране розташування'."
-        ),
-        'enjoyment_question': "Як вам сподобався ваш час, проведений у цьому місці?",
-        'enjoyment_options': [
-            "Дуже сподобався",
-            "Сподобався",
-            "Нейтрально",
-            "Не сподобався",
-            "Зовсім не сподобався"
-        ],
-        'visitor_type_question': "Кому б ви порекомендували це місце?",
-        'visitor_type_options': [
-            "Для прогулянок наодинці",
-            "Парам",
-            "Сім'ям з дітьми",
-            "Великим компаніям",
-            "Людям з домашніми тваринами",
-            "Інше (кому саме?)"
-        ],
-        'other_visitor_type_prompt': "Будь ласка, вкажіть, кому б сподобалось це місце:",
-        'other_visitor_type': "Будь ласка, вкажіть, хто ще оцінив би це місце:",
-        'other_purpose': "Будь ласка, вкажіть чим ще ви займались в цьому місці:",
-        'other_accessibility': "Будь ласка, вкажіть інший спосіб, яким ви дісталися до цього місця:",
-        'other_changes': "Будь ласка, вкажіть, що ще змінилося в цьому місці:",
-        'other_wishlist': "Будь ласка, вкажіть, що ще ви хотіли б покращити або змінити:",
-        'other_kremenchuk': "Будь ласка, вкажіть вашу власну ситуацію:",
-        'duration_question': "Скільки часу ви провели у цій місцевості під час вашого візиту?",
-        'duration_options': [
-            "Проходив повз або коротка зупинка",
-            "1–2 години",
-            "Більшу частину дня",
-            "Поїздка на кілька днів",
-            "Тривала поїздка, тиждень+",
-            "Надаю перевагу не вказувати"
-        ],
-        'invalid_rating': "Недійсний вибір. Будь ласка, оберіть варіант, запропонований у запитанні.",
-        'purpose_visit': "Чим ви займалися в цьому місці? Оберіть усі варіанти, які найкраще підходять, та/або додайте свій, якщо його немає у списку.",
-        'regularity_question': "Ви відвідуєте це місце регулярно, час від часу, чи лише один раз?",
-        'changes_question': "Чи помітили ви якісь зміни в цьому місці після повномасштабного вторгнення?",
-        'changes_detail_question': "Що саме змінилося? Ви можете обрати декілька варіантів.",
-        'wishlist_question': "Що, на вашу думку, варто покращити чи змінити в цьому місці?",
-        'kremenchuk_question': "Як довго ви проживаєте в місті Кременчук?",
-        'add_description': (
-            "Ми були б раді почути більше про ваш досвід. Будь ласка, поділіться будь-якими історіями, почуттями або пам'ятними моментами від вашого візиту. "
-            "Ви можете написати відповідь або надіслати голосове повідомлення. Голосове повідомлення буде перетворено в текст для аналізу, а оригінальне голосове повідомлення буде негайно видалене для захисту вашої конфіденційності. Якщо ви хочете пропустити та завершити, будь ласка, натисніть 'Пропустити'."
-        ),
-        'thank_you': "Дякуємо! Ваші дані були отримані.",
-        'skip_button': "Пропустити",
-        'age_question': "Будь ласка, оберіть вашу вікову групу:",
-        'gender_question': "Будь ласка, оберіть вашу стать:",
-        'occupation_question': "Будь ласка, оберіть ваш основний професійний статус:",
-        'income_question': "Будь ласка, оберіть рівень вашого місячного доходу:",
-        'done_button': "Готово",
-        'accessibility_question': "Яким чином ви дісталися до цього місця? Оберіть усі відповідні варіанти.",
-        'accessibility_options': [
-            "Пішки",
-            "На велосипеді",
-            "Громадським транспортом",
-            "Автомобілем",
-            "Таксі чи каршеринг",
-            "Інше"
-        ],
-        'continue_question': (
-            "Ваш анонімний ID: {nickname}. Зі збереженим ID ви берете участь у щомісячному розіграші сертифікату на 1000 грн. Заохочуємо доєднатись до нашого каналу https://t.me/ukrainability та слідкувати за результатами розіграшу першого числа кожного місяця — можливо, саме ви станете наступним переможцем! "
-            "Ви бажаєте розповісти про інше місце чи завершити?"
-        ),
-        'continue_options': ["Продовжити", "Завершити"],
-        'location_received': "Локацію отримано",
-        'responses_so_far': "Ваші відповіді наразі:",
-        'description_skipped': "Опис пропущено.",
-        'your_description': "Ваш опис:",
-        'selected': "Вибрано:",
-        'unselected': "Знято вибір:",
-        'you_selected': "Ви обрали:",
-        'voice_message_submitted': "Голосове повідомлення надіслано.",
-        'error_occurred': "Виникла помилка. Будь ласка, спробуйте пізніше.",
-        'invalid_selection': "Недійсний вибір.",
-        'your_response': "Ваша відповідь:",
-        'confirm_responses': "Ви підтверджуєте відповіді, чи хотіли б щось змінити?",
-        'modify_responses': "Хочу щось змінити",
-        'confirm_submission': "Підтверджую",
-        'select_questions_to_modify': "Будь-ласка, оберіть питання для зміни відповіді:",
-        'submission_confirmed': "Дякую! Відповіді було збережено",
-        'done_button': "Готово",
-        'please_select_at_least_one': "Будь ласка, оберіть принаймні один варіант.",
-        'please_send_text_or_voice': "Невірний формат. Будь ласка, надішліть текстове або голосове повідомлення.",
-        'labels': {
-            'location': 'Локація',
-            'enjoyment': 'Якість часу',
-            'purpose_visit': 'Мета візиту',
-            'regularity': 'Регулярність',
-            'accessibility': 'Доступність',
-            'noticed_changes': 'Помічені зміни',
-            'changes_detail': 'Деталі змін',
-            'wishlist': 'Побажання покращень',
-            'kremenchuk': 'Час проживання в Кременчуці',
-            'visitor_type': 'Рекомендовано',
-            'duration_visit': 'Тривалість відвідування',
-            'description': 'Опис',
-            'age': 'Вікова група',
-            'gender': 'Стать',
-            'occupation': 'Рід занять',
-            'income': 'Рівень доходу'
-        },
-        'options': {
-            'purpose_visit': [
-                "Релакс: природа, засмага, відпочинок",
-                "Активність: ходьба, біг, велосипед",
-                "Професійний спорт або змагання",
-                "Спілкування: зустрічі, свята, події",
-                "Гастрономія: барбекю, пікнік",
-                "Екскурсії, освітні заходи",
-                "Спостереження за птахами, природою",
-                "Риболовля",
-                "Збирання: гриби, ягоди, трави",
-                "Садівництво: догляд за рослинами",
-                "Творчість: мистецтво, фото, виступи",
-                "Духовні практики та медитація",
-                "Інше"
-            ],
-            'regularity': [
-                "Дуже часто: кілька разів на тиждень",
-                "Часто: кілька разів на місяць",
-                "Регулярно: кілька разів на рік і частіше",
-                "Час від часу: раз на рік і рідше",
-                "Разове відвідування",
-                "Відвідував(-ла) до 2022 р., але не зараз",
-                "Надаю перевагу не вказувати"
-            ],
-            'noticed_changes': [
-                "Так, позитивні зміни",
-                "Так, негативні зміни",
-                "Не помітив(ла) змін, або не знаю"
-            ],
-            'changes_detail': [
-                "Чистота довкілля, краєвид",
-                "Доступність (дороги, транспорт)",
-                "Сервіси (заклади)",
-                "Безпека (ризики, освітлення)",
-                "Кількість відвідувачів",
-                "Рекреаційна інфраструктура",
-                "Інше"
-            ],
-            'wishlist': [
-                "Чистіша вода у водоймах",
-                "Чистіше повітря",
-                "Менше шуму",
-                "Більше тіні, фонтанів в спеку",
-                "Більше закладів і сервісів",
-                "Краще освітлення вночі",
-                "Безпечніші пішоходні зони",
-                "Зручніший транспорт",
-                "Доступ для малобільних людей",
-                "Більше зелені",
-                "Все влаштовує, не маю побажань",
-                "Інше"
-            ],
-            'kremenchuk': [
-                "Менше року",
-                "1-3 роки",
-                "3-10 років",
-                "10-20 років",
-                "Все життя",
-                "Не проживаю у Кременчуці",
-                "Інше",
-                "Надаю перевагу не вказувати"
-            ],
-            'age': [
-                "18-25", "26-40", "41-60", "Понад 60", "Надаю перевагу не вказувати"
-            ],
-            'gender': [
-                "Чоловіча", "Жіноча", "Інше", "Надаю перевагу не вказувати"
-            ],
-            'occupation': [
-                "Працюю", "Не працюю", "Навчаюсь", "На пенсії", "Військова служба", "Інше", "Надаю перевагу не вказувати"
-            ],
-            'income': [
-                "0-5000 грн", "5001-10000 грн", "10001-20000 грн", "Більше 20000 грн", "Надаю перевагу не вказувати"
-            ],
-        },
-    }
-}
 
 
 # In[3]:
@@ -868,11 +475,7 @@ def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_ret
         except ApiTelegramException as e:
             # Handle rate limiting
             if "429" in str(e) or "too many requests" in str(e).lower():
-                retry_after = 3
-                # Try to extract retry_after value if provided by Telegram
-                if hasattr(e, 'result') and isinstance(e.result, dict):
-                    retry_after = e.result.get('parameters', {}).get('retry_after', 3)
-                
+                retry_after = telegram_retry_after(e, default=3)
                 flow_logger.warning(f"Rate limited, waiting {retry_after}s before retry {attempt+1}/{max_retries}")
                 time.sleep(retry_after)
                 continue
@@ -894,6 +497,7 @@ def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_ret
             else:
                 flow_logger.error(f"Failed to send message: {e}")
                 raise
+    raise RuntimeError("Failed to send message after retry loop")
 
 
 def save_user_nickname(user_hash, nickname):
@@ -941,7 +545,7 @@ def safe_get_language(user_id):
 
         # Default fallback
         return 'en'
-    except BaseException:
+    except Exception:
         # Ultimate fallback
         return 'en'
 
@@ -1019,7 +623,7 @@ def safe_answer_callback(call, message):
                 language = safe_get_language(user_id)
                 bot.send_message(call.message.chat.id, messages[language].get(
                     'error_occurred', "An error occurred. Please try again."))
-            except BaseException:
+            except Exception:
                 pass
 
 
@@ -1053,7 +657,7 @@ def ensure_session_valid(call):
                 bot.send_message(
                     chat_id,
                     "Session expired. Please use /start to begin.\nСесія закінчилася. Будь ласка, використайте /start для початку.")
-            except BaseException:
+            except Exception:
                 pass
             return False, 'en'
     else:
@@ -1093,28 +697,32 @@ def recover_user_sessions():
 
         # Get a snapshot of current user_data to avoid modification during
         # iteration
-        users_to_recover = list(user_data.keys())
+        with user_data_lock:
+            users_to_recover = list(user_data.keys())
         recovered_count = 0
 
         for user_id in users_to_recover:
             try:
                 # Ensure basic data structures exist
-                if 'language' not in user_data[user_id]:
-                    if user_id in user_profiles and 'language' in user_profiles[user_id]:
-                        user_data[user_id]['language'] = user_profiles[user_id]['language']
+                with user_data_lock:
+                    session = user_data.get(user_id, {})
+                if 'language' not in session:
+                    language = get_user_profile(user_id, 'language')
+                    if language:
+                        set_user_data(user_id, 'language', language)
                     else:
                         # Can't recover without language
                         continue
 
                 # Restore nickname from database if needed
-                if 'nickname' not in user_data[user_id]:
-                    user_hash = hashlib.sha1(str(user_id).encode()).hexdigest()
+                if 'nickname' not in get_user_data(user_id):
+                    user_hash = get_user_hash(user_id)
                     nickname = get_user_nickname(user_hash)
                     if nickname:
-                        user_data[user_id]['nickname'] = nickname
+                        set_user_data(user_id, 'nickname', nickname)
 
                 # Mark recovery state - will be used to inform users later
-                user_data[user_id]['session_recovered'] = True
+                set_user_data(user_id, 'session_recovered', True)
                 recovered_count += 1
 
                 flow_logger.info(f"Recovered session for user {user_id}")
@@ -1145,8 +753,11 @@ def cleanup_stale_sessions(hours_inactive=48):
         cutoff_time = current_time - (hours_inactive * 60 * 60)
         users_to_remove = []
 
-        # First identify which users to remove
-        for user_id, data in user_data.items():
+        # First identify which users to remove from a lock-protected snapshot.
+        with user_data_lock:
+            user_items = list(user_data.items())
+
+        for user_id, data in user_items:
             last_activity = data.get('last_activity_time', 0)
             if last_activity < cutoff_time:
                 users_to_remove.append(user_id)
@@ -1154,7 +765,8 @@ def cleanup_stale_sessions(hours_inactive=48):
         # Then remove them
         for user_id in users_to_remove:
             try:
-                user_data.pop(user_id, None)
+                with user_data_lock:
+                    user_data.pop(user_id, None)
                 flow_logger.info(f"Removed stale session for user {user_id}")
             except Exception as e:
                 flow_logger.error(
@@ -1174,77 +786,20 @@ def update_activity_timestamp(user_id):
     Args:
         user_id (int): User identifier
     """
-    if user_id in user_data:
-        user_data[user_id]['last_activity_time'] = time.time()
-    else:
-        # If user doesn't exist in user_data, initialize it
-        user_data[user_id] = {'last_activity_time': time.time()}
+    with user_data_lock:
+        if user_id in user_data:
+            user_data[user_id]['last_activity_time'] = time.time()
+        else:
+            # If user doesn't exist in user_data, initialize it
+            user_data[user_id] = {'last_activity_time': time.time()}
 # In[4]:
 
 
 # Database functions
 def initialize_database():
-    conn = None
     with db_lock:
         try:
-            conn = sqlite3.connect(db_file, check_same_thread=False)
-            cursor = conn.cursor()
-            
-            # Set pragmas for better performance
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA busy_timeout=5000")
-
-            # Make sure all columns exist
-            create_responses_table_query = '''
-                CREATE TABLE IF NOT EXISTS responses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nickname TEXT,
-                    month_year TEXT,
-                    latitude TEXT,
-                    longitude TEXT,
-                    venue_title TEXT,
-                    venue_address TEXT,
-                    enjoyment TEXT,
-                    purpose_visit TEXT,
-                    regularity TEXT,
-                    noticed_changes TEXT,
-                    changes_detail TEXT,
-                    wishlist TEXT,
-                    kremenchuk TEXT,
-                    description TEXT,
-                    voice_submitted TEXT,
-                    age TEXT,
-                    gender TEXT,
-                    occupation TEXT,
-                    income TEXT,
-                    language TEXT,
-                    timestamp TEXT,
-                    visitor_type TEXT,
-                    duration_visit TEXT,
-                    accessibility TEXT,
-                    consent TEXT
-                );
-            '''
-            cursor.execute(create_responses_table_query)
-
-            create_nicknames_table_query = '''
-                CREATE TABLE IF NOT EXISTS user_nicknames (
-                    user_hash TEXT,
-                    nickname TEXT NOT NULL,
-                    month_year TEXT,
-                    PRIMARY KEY (user_hash, month_year)
-                );
-            '''
-            cursor.execute(create_nicknames_table_query)
-            
-            # Add indexes for better performance
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nickname ON responses(nickname)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_hash ON user_nicknames(user_hash)")
-
-            conn.commit()
-            
-            print("Database initialized successfully")
+            initialize_storage_database(Path(db_file))
             flow_logger.info("Database initialized successfully")
             
             # Check if connection pool is empty before initializing
@@ -1254,12 +809,6 @@ def initialize_database():
         except Exception as e:
             logging.exception(f"Error initializing responses database: {e}")
             raise e
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except:
-                    pass
 
 def hide_keyboard(chat_id):
     """
@@ -1323,7 +872,7 @@ def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
             # Cannot proceed without chat_id and user_id
             return
 
-        user_hash = hashlib.sha1(str(user_id).encode()).hexdigest()
+        user_hash = get_user_hash(user_id)
         nickname = get_user_nickname(user_hash)
         if not nickname:
             nickname = generate_unique_nickname()
@@ -1429,7 +978,7 @@ def handle_language_selection(call):
     try:
         chat_id = call.message.chat.id
         user_id = call.from_user.id
-        data = call.data.split('_')[1]
+        data = callback_suffix(call.data, "purpose")
 
         # Initialize user_data for this user if it doesn't exist
         if user_id not in user_data:
@@ -1512,8 +1061,6 @@ def handle_consent(call):
     try:
         chat_id = call.message.chat.id
         user_id = call.from_user.id
-        idx = int(call.data.split('_')[1])
-
         # Ensure language is available
         if user_id not in user_data or 'language' not in user_data[user_id]:
             if user_id in user_profiles and 'language' in user_profiles[user_id]:
@@ -1526,6 +1073,12 @@ def handle_consent(call):
 
         language = user_data[user_id]['language']
         consent_options = messages[language]['consent_options']
+        try:
+            idx = callback_index(call.data, "consent", consent_options)
+        except (ValueError, IndexError):
+            bot.answer_callback_query(
+                call.id, messages[language]['invalid_selection'])
+            return
 
         if 0 <= idx < len(consent_options):
             consent_response = consent_options[idx]
@@ -1666,7 +1219,8 @@ def handle_location_step(message):
 
             # Debug log for coordinates
             flow_logger.info(
-                f"User {user_id}: Coordinate location received - lat: {latitude}, long: {longitude}")
+                "Coordinate location received - "
+                f"lat~{redacted_coordinate(latitude)}, long~{redacted_coordinate(longitude)}")
 
             # Enhanced confirmation message with emoji and coordinate display
             if venue_title or venue_address:
@@ -1700,7 +1254,7 @@ def handle_location_step(message):
 
             # Debug log for venue location
             flow_logger.info(
-                f"User {user_id}: Venue location received - title: {venue_title}, address: {venue_address}")
+                "Venue location received; title/address redacted")
 
             # Enhanced confirmation message with emoji and venue info
             location_received_msg = f"📍 {messages[language]['location_received']}: {venue_title}, {venue_address}"
@@ -1728,11 +1282,7 @@ def handle_location_step(message):
                         message, handle_location_step)
                     return
 
-            # Debug logs for text-based location
-            print(
-                f"DEBUG: User {user_id} sent text location: '{location_text}'")
-            flow_logger.info(
-                f"User {user_id}: Text location received: '{location_text}'")
+            flow_logger.info("Text location received; content redacted")
 
             # Store in location data with empty coordinates but populated
             # venue_address
@@ -1743,13 +1293,7 @@ def handle_location_step(message):
                 'venue_address': location_text  # Store the text input in venue_address
             }
 
-            # Verify data was stored correctly
-            venue_address_stored = user_data[user_id]['location'].get(
-                'venue_address', '')
-            print(
-                f"DEBUG: Stored in user_data: venue_address='{venue_address_stored}'")
-            flow_logger.info(
-                f"User {user_id}: Stored venue_address='{venue_address_stored}' in user_data")
+            flow_logger.info("Text location stored in user_data; content redacted")
 
             # Confirmation message
             location_received_msg = f"📍 {messages[language]['location_received']}: {location_text}"
@@ -1774,7 +1318,7 @@ def handle_location_step(message):
             error_msg = messages[language].get(
                 'error_occurred', "An error occurred. Please try again later.")
             bot.reply_to(message, error_msg)
-        except:
+        except Exception:
             # Fallback if language is not accessible
             bot.reply_to(
                 message,
@@ -1884,34 +1428,36 @@ def handle_purpose_selection(call):
                 time.sleep(0.5)
                 ask_enjoyment(chat_id, user_id, language)
         else:
-            idx = int(data)
             # Remove the 'Other' option
             options = messages[language]['options']['purpose_visit'][:-1]
-            if 0 <= idx < len(options):
-                selected_option = options[idx]
-                
-                # Get the current purposes using thread-safe access
-                purpose_visit = get_user_data(user_id, 'purpose_visit', [])
-
-                # Just toggle selection
-                if selected_option in purpose_visit:
-                    purpose_visit.remove(selected_option)
-                    safe_answer_callback(
-                        call, f"{messages[language]['unselected']} {selected_option}")
-                else:
-                    purpose_visit.append(selected_option)
-                    safe_answer_callback(
-                        call, f"{messages[language]['selected']} {selected_option}")
-                
-                # Save the updated list using thread-safe method
-                set_user_data(user_id, 'purpose_visit', purpose_visit)
-
-                update_purpose_selection_keyboard(
-                    call.message, user_id, language)
-            else:
+            try:
+                idx = callback_index(call.data, "purpose", options)
+            except (ValueError, IndexError):
                 safe_answer_callback(
                     call, messages[language].get(
                         'invalid_selection', "Invalid selection."))
+                return
+
+            selected_option = options[idx]
+                
+            # Get the current purposes using thread-safe access
+            purpose_visit = get_user_data(user_id, 'purpose_visit', [])
+
+            # Just toggle selection
+            if selected_option in purpose_visit:
+                purpose_visit.remove(selected_option)
+                safe_answer_callback(
+                    call, f"{messages[language]['unselected']} {selected_option}")
+            else:
+                purpose_visit.append(selected_option)
+                safe_answer_callback(
+                    call, f"{messages[language]['selected']} {selected_option}")
+                
+            # Save the updated list using thread-safe method
+            set_user_data(user_id, 'purpose_visit', purpose_visit)
+
+            update_purpose_selection_keyboard(
+                call.message, user_id, language)
     except Exception as e:
         handle_callback_error(call, e, "handle_purpose_selection")
 
@@ -2330,49 +1876,49 @@ def handle_duration_selection(call):
         language = user_data[user_id]['language']
 
         duration_options = messages[language]['duration_options']
-        idx = int(call.data.split('_')[1])
+        try:
+            idx = callback_index(call.data, "duration", duration_options)
+        except (ValueError, IndexError):
+            safe_answer_callback(call, messages[language]['invalid_selection'])
+            return
 
-        if 0 <= idx < len(duration_options):
-            selected_duration = duration_options[idx]
+        selected_duration = duration_options[idx]
 
-            # Store temporarily, don't commit until confirmed
-            user_data[user_id]['temp_duration_visit'] = selected_duration
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_duration_visit'] = selected_duration
 
-            # Update keyboard to show selection and add Confirm button
-            inline_kb = types.InlineKeyboardMarkup(row_width=1)
-            for i, option in enumerate(duration_options):
-                # Mark the selected option
-                text = f"✅ {option}" if i == idx else option
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=text,
-                        callback_data=f"duration_{i}"))
-
-            # Add Confirm/Done button
-            done_text = messages[language]['done_button']
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(duration_options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
             inline_kb.add(
                 types.InlineKeyboardButton(
-                    text=done_text,
-                    callback_data="confirm_duration"))
+                    text=text,
+                    callback_data=f"duration_{i}"))
 
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=inline_kb
-                )
-            except telebot.apihelper.ApiTelegramException as api_error:
-                # Ignore "message is not modified" error as it's normal when
-                # selecting the same option
-                if "message is not modified" not in str(api_error):
-                    raise api_error
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_duration"))
 
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {selected_duration}")
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(call, messages[language]['invalid_selection'])
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as api_error:
+            # Ignore "message is not modified" error as it's normal when
+            # selecting the same option
+            if "message is not modified" not in str(api_error):
+                raise api_error
+
+        # Replace direct call with safe_answer_callback
+        safe_answer_callback(
+            call, f"{messages[language]['selected']} {selected_duration}")
     except Exception as e:
         logging.exception(f"Error in handle_duration_selection: {e}")
         bot.send_message(
@@ -2657,9 +2203,14 @@ def handle_regularity_selection(call):
         user_id = call.from_user.id
         language = user_data[user_id]['language']
 
-        # Store initial selection in temp storage
-        selected_idx = int(call.data.split('_')[1])
         options = messages[language]['options']['regularity']
+        try:
+            selected_idx = callback_index(call.data, "regularity", options)
+        except (ValueError, IndexError):
+            safe_answer_callback(
+                call, messages[language].get(
+                    'invalid_selection', "Invalid selection."))
+            return
 
         if 0 <= selected_idx < len(options):
             selected_regularity = options[selected_idx]
@@ -3654,13 +3205,13 @@ def handle_age_selection(call):
             language = user_data.get(user_id, {}).get('language', 'en')
             error_msg = messages[language].get(
                 'error_occurred', "An error occurred. Please try again later.")
-        except BaseException:
+        except Exception:
             # Ultimate fallback if everything else fails
             error_msg = "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше."
 
         try:
             bot.send_message(chat_id, error_msg)
-        except BaseException:
+        except Exception:
             logging.critical("Failed to send error message to user")
 
 
@@ -3729,13 +3280,13 @@ def confirm_age(call):
             language = user_data.get(user_id, {}).get('language', 'en')
             error_msg = messages[language].get(
                 'error_occurred', "An error occurred. Please try again later.")
-        except BaseException:
+        except Exception:
             # Ultimate fallback if everything else fails
             error_msg = "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше."
 
         try:
             bot.send_message(chat_id, error_msg)
-        except BaseException:
+        except Exception:
             logging.critical("Failed to send error message to user")
 
 
@@ -4507,10 +4058,13 @@ def handle_description(message):
                         # Successfully downloaded, break retry loop
                         break
                     except ApiTelegramException as e:
-                        if "429" in str(e) or attempt < 2:
-                            # Rate limited or other temporary error, retry
-                            retry_after = 3 if "429" not in str(e) else int(str(e).split("retry after ")[1].split(" seconds")[0])
+                        if "429" in str(e) or "too many requests" in str(e).lower():
+                            retry_after = telegram_retry_after(e, default=3)
                             flow_logger.warning(f"Voice download error: {e}, retrying in {retry_after}s")
+                            time.sleep(retry_after)
+                        elif attempt < 2:
+                            retry_after = 2 ** attempt
+                            flow_logger.warning(f"Voice download API error: {e}, retrying in {retry_after}s")
                             time.sleep(retry_after)
                         else:
                             # Final attempt failed
@@ -4523,14 +4077,12 @@ def handle_description(message):
                 nickname = get_user_data(user_id, 'nickname')
                 
                 # Create directory for user's voice files
-                user_voice_dir = os.path.join(voice_files_dir, nickname)
+                user_voice_dir = safe_nickname_directory(voice_files_dir, nickname)
                 os.makedirs(user_voice_dir, exist_ok=True)
                 
-                # Generate unique filename
-                existing_files = os.listdir(user_voice_dir)
-                submission_id = len(existing_files) + 1
-                filename = f"{nickname} {submission_id}.enc"
-                voice_filename = os.path.join(user_voice_dir, filename)
+                # Generate a non-racy filename to avoid concurrent upload collisions.
+                filename = new_voice_filename(nickname)
+                voice_filename = user_voice_dir / filename
 
                 # Write the encrypted file
                 with open(voice_filename, 'wb') as new_file:
@@ -4580,7 +4132,7 @@ def handle_description(message):
             
             retry_msg = "Would you like to try again or skip the description?" if language == 'en' else "Хочете спробувати знову чи пропустити опис?"
             safe_send_message(chat_id, retry_msg, reply_markup=inline_kb)
-        except:
+        except Exception:
             # Fallback if everything else fails
             bot.reply_to(message, "An error occurred. Please try again later.")
 
@@ -5093,7 +4645,7 @@ def get_anonymous_id(user_id):
         return user_data[user_id]['nickname']
 
     # If not in user_data, check if we can retrieve it from the database
-    user_hash = hashlib.sha1(str(user_id).encode()).hexdigest()
+    user_hash = get_user_hash(user_id)
     nickname = get_user_nickname(user_hash)
 
     if nickname:
@@ -5565,7 +5117,7 @@ def get_db_connection():
             # Connection is stale, create a new one
             try:
                 connection.close()
-            except:
+            except Exception:
                 pass
             flow_logger.warning("Retrieved stale connection from pool, creating new one")
             return sqlite3.connect(db_file, check_same_thread=False)
@@ -5584,6 +5136,7 @@ def return_db_connection(connection):
     try:
         # Test the connection before returning it to the pool
         try:
+            connection.rollback()
             connection.execute("SELECT 1")
             # Try to return the connection to the pool
             db_pool.put(connection, block=False)
@@ -5591,20 +5144,20 @@ def return_db_connection(connection):
             # If connection is no longer valid, close it
             try:
                 connection.close()
-            except:
+            except Exception:
                 pass
     except queue.Full:
         # If pool is full, close the connection
         try:
             connection.close()
-        except:
+        except Exception:
             pass
     except Exception as e:
         # Ensure connection is closed on any error
         flow_logger.error(f"Error returning DB connection: {e}")
         try:
             connection.close()
-        except:
+        except Exception:
             pass
 
 # Data saving
@@ -5620,7 +5173,7 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
         
         consent_str = "True" if user_consent else "False"
 
-        user_hash = hashlib.sha1(str(user_id).encode()).hexdigest()
+        user_hash = get_user_hash(user_id)
         nickname = get_user_nickname(user_hash)
         month_year = datetime.datetime.now().strftime("%Y-%m")
         if not nickname:
@@ -5975,14 +5528,7 @@ def start_polling_with_retry():
         except ApiTelegramException as e:
             # Specific handling for Telegram API errors
             if "429" in str(e) or "too many requests" in str(e).lower():
-                # Extract retry_after if available
-                retry_after = 30  # Default
-                try:
-                    retry_after_str = str(e).split("retry after ")[1].split(" seconds")[0]
-                    retry_after = int(retry_after_str)
-                except:
-                    pass
-                
+                retry_after = telegram_retry_after(e, default=30)
                 flow_logger.warning(f"Rate limited by Telegram API, waiting {retry_after} seconds before retry")
                 time.sleep(retry_after + 5)  # Add a buffer
             else:
