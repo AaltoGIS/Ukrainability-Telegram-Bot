@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ukrainability-telegram-bot"
+version = "0.1.0"
+description = "Telegram bot for the Ukrainability outdoor experience survey."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Oleksandr Karasov", email = "oleksa.karasov@gmail.com" },
+]
+keywords = ["telegram", "survey", "ukrainability", "bot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+]
+dependencies = [
+    "pyTelegramBotAPI",
+    "cryptography",
+    "python-dotenv",
+    "requests",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pytest",
+    "twine",
+]
+
+[project.scripts]
+ukrainability-bot = "ukrainability_telegram_bot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/HTenkanen/UkrainabilityTelegramBot"
+Repository = "https://github.com/HTenkanen/UkrainabilityTelegramBot"
+
+[tool.setuptools.packages.find]
+where = ["src"]
