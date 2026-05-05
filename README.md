@@ -132,13 +132,12 @@ src/ukrainability_telegram_bot/
   storage.py    # SQLite helpers
   survey/
     persistence.py # response row building/encryption/insertion
-    questions/     # extracted survey question modules
+    questions/     # survey question modules
   telegram_io.py # Telegram send/edit/callback helpers
   keyboards.py  # keyboard construction helper
 tests/          # pytest suite
 ```
 
-The runtime code intentionally preserves the current survey flow while moving
-startup work behind the CLI, so importing the package does not start polling,
-call Telegram, create directories, initialize the database, or start cleanup
-threads.
+Importing the package never starts polling, calls Telegram, creates directories,
+initializes the database, or starts cleanup threads. Runtime effects live behind
+`configure_runtime()`, `run()`, and `cli.main()`.
