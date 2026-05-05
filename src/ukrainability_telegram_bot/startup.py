@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 
 from .app import AppContext
 from .pseudonym import hash_user_id
@@ -24,11 +23,7 @@ def initialize_database(ctx: AppContext) -> None:
 def update_activity_timestamp(ctx: AppContext, user_id: int) -> None:
     """Update the last activity timestamp for a user session."""
 
-    with ctx.sessions.lock:
-        if user_id in ctx.sessions.data:
-            ctx.sessions.data[user_id]["last_activity_time"] = time.time()
-        else:
-            ctx.sessions.data[user_id] = {"last_activity_time": time.time()}
+    ctx.sessions.update_activity(user_id)
 
 
 def recover_user_sessions(ctx: AppContext) -> None:
@@ -36,29 +31,24 @@ def recover_user_sessions(ctx: AppContext) -> None:
 
     try:
         ctx.flow_logger.info("Attempting to recover user sessions...")
-        with ctx.sessions.lock:
-            users_to_recover = list(ctx.sessions.data.keys())
+        users_to_recover = ctx.sessions.all_user_ids()
         recovered_count = 0
 
         for user_id in users_to_recover:
             try:
-                with ctx.sessions.lock:
-                    session = ctx.sessions.data.get(user_id, {})
-                if "language" not in session:
-                    language = _get_profile_value(ctx, user_id, "language")
-                    if language:
-                        _set_session_value(ctx, user_id, "language", language)
-                    else:
+                if ctx.sessions.get_data(user_id, "language") is None:
+                    language = ctx.sessions.get_profile(user_id, "language")
+                    if not language:
                         continue
+                    ctx.sessions.set_data(user_id, "language", language)
 
-                current_session = _get_session(ctx, user_id)
-                if "nickname" not in current_session:
+                if ctx.sessions.get_data(user_id, "nickname") is None:
                     user_hash = hash_user_id(user_id, ctx.config.user_hash_salt)
                     nickname = _get_latest_user_nickname(ctx, user_hash)
                     if nickname:
-                        _set_session_value(ctx, user_id, "nickname", nickname)
+                        ctx.sessions.set_data(user_id, "nickname", nickname)
 
-                _set_session_value(ctx, user_id, "session_recovered", True)
+                ctx.sessions.set_data(user_id, "session_recovered", True)
                 recovered_count += 1
                 ctx.flow_logger.info(f"Recovered session for user {user_id}")
             except Exception as inner_exc:
@@ -71,21 +61,6 @@ def recover_user_sessions(ctx: AppContext) -> None:
         )
     except Exception as exc:
         ctx.flow_logger.error(f"Error in session recovery process: {exc}")
-
-
-def _get_session(ctx: AppContext, user_id: int) -> dict:
-    with ctx.sessions.lock:
-        return ctx.sessions.data.setdefault(user_id, {})
-
-
-def _set_session_value(ctx: AppContext, user_id: int, key: str, value: object) -> None:
-    with ctx.sessions.lock:
-        ctx.sessions.data.setdefault(user_id, {})[key] = value
-
-
-def _get_profile_value(ctx: AppContext, user_id: int, key: str) -> object | None:
-    with ctx.sessions.lock:
-        return ctx.sessions.profiles.setdefault(user_id, {}).get(key)
 
 
 def _get_latest_user_nickname(ctx: AppContext, user_hash: str) -> str | None:

@@ -43,3 +43,24 @@ def test_recover_user_sessions_restores_language_and_nickname(app_context):
     assert app_context.sessions.data[user_id]["language"] == "en"
     assert app_context.sessions.data[user_id]["nickname"] == "Bright Fox 0"
     assert app_context.sessions.data[user_id]["session_recovered"] is True
+
+
+def test_recover_user_sessions_skips_users_without_language(app_context):
+    user_id = 123
+    app_context.sessions.data[user_id] = {}
+
+    startup.recover_user_sessions(app_context)
+
+    assert app_context.sessions.data[user_id] == {}
+
+
+def test_recover_user_sessions_continues_without_nickname(app_context):
+    user_id = 123
+    app_context.sessions.data[user_id] = {}
+    app_context.sessions.profiles[user_id] = {"language": "en"}
+
+    startup.recover_user_sessions(app_context)
+
+    assert app_context.sessions.data[user_id]["language"] == "en"
+    assert "nickname" not in app_context.sessions.data[user_id]
+    assert app_context.sessions.data[user_id]["session_recovered"] is True
