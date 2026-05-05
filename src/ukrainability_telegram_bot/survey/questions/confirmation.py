@@ -149,11 +149,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
         latitude_label = "Latitude" if language == "en" else "Широта"
         longitude_label = "Longitude" if language == "en" else "Довгота"
         skipped_text = "Skipped" if language == "en" else "Пропущено"
-        voice_submitted_text = (
-            "Voice message submitted."
-            if language == "en"
-            else "Голосове повідомлення надіслано."
-        )
+        voice_submitted_text = messages[language]["voice_message_submitted"]
         lines: list[str] = []
 
         for field in FIELD_ORDER:
