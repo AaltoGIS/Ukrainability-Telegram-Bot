@@ -33,6 +33,26 @@ def test_session_store_message_id_round_trip():
     assert store.get_message_id(1, "purpose_visit") is None
 
 
+def test_session_store_clear_transient_keys_removes_prefixes_and_exact_keys():
+    store = SessionStore()
+    store.set_data(1, "language", "en")
+    store.set_data(1, "temp_enjoyment", "5")
+    store.set_data(1, "awaiting_multiple_select", "purpose_visit")
+    store.set_data(1, "modifying", True)
+    store.set_data(1, "purpose_visit", ["Walking"])
+
+    store.clear_transient_keys(
+        1,
+        prefixes=frozenset({"temp_"}),
+        exact_keys=frozenset({"awaiting_multiple_select", "modifying"}),
+    )
+
+    assert store.get_data(1) == {
+        "language": "en",
+        "purpose_visit": ["Walking"],
+    }
+
+
 def test_session_store_evict_inactive_keeps_recent_users(monkeypatch):
     store = SessionStore()
     monkeypatch.setattr("ukrainability_telegram_bot.sessions.time.time", lambda: 5_000.0)

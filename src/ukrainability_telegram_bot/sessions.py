@@ -101,3 +101,18 @@ class SessionStore:
     def clear_message_ids(self, user_id: int) -> None:
         with self._lock:
             self._message_ids.pop(user_id, None)
+
+    def clear_transient_keys(
+        self,
+        user_id: int,
+        *,
+        prefixes: set[str] | frozenset[str] = frozenset(),
+        exact_keys: set[str] | frozenset[str] = frozenset(),
+    ) -> None:
+        with self._lock:
+            session = self._data.get(user_id)
+            if not session:
+                return
+            for key in list(session):
+                if key in exact_keys or any(key.startswith(prefix) for prefix in prefixes):
+                    session.pop(key, None)
