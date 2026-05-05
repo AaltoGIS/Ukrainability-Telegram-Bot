@@ -16,7 +16,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 |---|---|
 | Single 6074-line script. | `src/ukrainability_telegram_bot/` package with `cli.py` entrypoint, `pyproject.toml`, installable as `ukrainability-bot`. |
 | Side effects at import time: created storage directories, opened the DB, called `bot.get_me()`, spawned the cleanup thread. | All side effects deferred to `configure_runtime(AppConfig)` / `run()`. Importing the package does nothing observable. |
-| Handlers registered at import via `@bot.message_handler(...)` against a real `TeleBot`. | `runtime.register_handlers(ctx)` registers bound `LegacyBridge` methods against the configured `TeleBot`; importing modules does not attach handlers and there is no process-wide active context. |
+| Handlers registered at import via `@bot.message_handler(...)` against a real `TeleBot`. | `runtime.register_handlers(ctx)` registers modular handlers against the configured `TeleBot`; importing modules does not attach handlers and there is no process-wide active context. |
 | Hard-coded `/home/ubuntu/kremenchuk` paths and inline credentials parsing. | `AppConfig.from_env()` dataclass with explicit fields; `UKRAINABILITY_STORAGE_DIR`, `UKRAINABILITY_CREDENTIALS_FILE`, `UKRAINABILITY_BOT_ERRORS_LOG`, `UKRAINABILITY_FLOW_CONTROL_LOG`, `UKRAINABILITY_LOG_MAX_BYTES`, `UKRAINABILITY_LOG_BACKUP_COUNT`, `UKRAINABILITY_VOICE_RETENTION_DAYS`, `UKRAINABILITY_CLEANUP_INTERVAL_SECONDS`. |
 | No tests. | Unit tests covering config, security, storage, pseudonym, voice helpers, nicknames, keyboards, messages, cleanup, Telegram I/O, question modules, and helper functions. |
 
@@ -61,7 +61,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, text fallback routing, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, `survey/actions.py`, `survey/text_router.py`, `survey/flow.py`, `survey/persistence.py`, and `survey/questions/` modules for welcome, language, location, consent, purpose, description, enjoyment, visitor type, duration, accessibility, regularity, frequency change, noticed changes, changes detail, wishlist, Kremenchuk residency, demographics, final confirmation/modification, and post-submission restart/continue. The remaining temporary legacy module is a per-context runtime-registration bridge; `bot.py` is a compatibility shim that re-exports `configure_runtime` and `run`. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, text fallback routing, handler registration, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `handlers.py`, `app.py`, `sessions.py`, `survey/actions.py`, `survey/text_router.py`, `survey/flow.py`, `survey/persistence.py`, and `survey/questions/` modules for welcome, language, location, consent, purpose, description, enjoyment, visitor type, duration, accessibility, regularity, frequency change, noticed changes, changes detail, wishlist, Kremenchuk residency, demographics, final confirmation/modification, and post-submission restart/continue. The temporary legacy bridge is fully retired; `bot.py` is a compatibility shim that re-exports `configure_runtime` and `run`. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by the survey flow modules. |
 | Branching helpers mixed display strings with control-flow checks. | `survey/flow.py` keeps dependency predicates tied to option indices so translation wording changes do not silently change branching. |
 
@@ -75,6 +75,5 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Retiring the remaining `_legacy.py` registration bridge by moving `register_handlers` and the last state helpers into normal runtime modules.
 - Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from cryptography.fernet import Fernet
 
-from ukrainability_telegram_bot import runtime
+from ukrainability_telegram_bot import bot, runtime
 from ukrainability_telegram_bot.app import AppContext
 from ukrainability_telegram_bot.config import AppConfig
 
@@ -54,6 +54,15 @@ def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tm
 def test_runtime_no_longer_exposes_active_context():
     assert not hasattr(runtime, "_active_context")
     assert not hasattr(runtime, "require_active_context")
+
+
+def test_runtime_uses_modular_handler_registration():
+    assert runtime.register_handlers.__module__ == "ukrainability_telegram_bot.handlers"
+
+
+def test_bot_module_reexports_runtime_entrypoints():
+    assert bot.configure_runtime is runtime.configure_runtime
+    assert bot.run is runtime.run
 
 
 def test_runtime_no_longer_exposes_scalar_mirrors():

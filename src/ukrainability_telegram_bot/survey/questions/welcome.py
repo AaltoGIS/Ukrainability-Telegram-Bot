@@ -43,7 +43,7 @@ class WelcomeQuestion:
 
     Welcome is a special case during Phase 5 because it has multiple entry
     points: the `/start` message handler, the `restart` callback, and
-    programmatic restarts after saving. `_legacy.py` routes those entry points
+    programmatic restarts after saving. The handler registry routes those entry points
     explicitly while this class keeps the question visible in the registry.
     """
 

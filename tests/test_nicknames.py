@@ -32,7 +32,7 @@ def test_generate_unique_nickname_fails_when_pool_is_exhausted():
         generate_unique_nickname(used, adjectives=["Bright"], nouns=["Fox"])
 
 
-def test_generate_unique_nickname_can_preserve_legacy_format():
+def test_generate_unique_nickname_can_preserve_classic_format():
     nickname = generate_unique_nickname(
         set(),
         adjectives=["Bright"],
