@@ -39,9 +39,6 @@ fernet = None
 bot = None
 bot_username = None
 
-# TODO(phase-5): remove when handlers are registered against an explicit context.
-_active_context: AppContext | None = None
-
 
 def _load_legacy_handlers() -> Any:
     """Import legacy survey helpers."""
@@ -55,12 +52,6 @@ def register_handlers(ctx: AppContext) -> None:
     """Register Telegram handlers against the configured bot."""
 
     _load_legacy_handlers().register_handlers(ctx)
-
-
-def require_active_context() -> AppContext:
-    if _active_context is None:
-        raise RuntimeError("runtime.configure_runtime() must be called before use")
-    return _active_context
 
 
 def _configure_logging(config: AppConfig) -> None:
@@ -111,7 +102,6 @@ def configure_runtime(
     global user_hash_salt
     global voice_retention_days
     global cleanup_interval_seconds
-    global _active_context
 
     _configure_logging(config)
     token = config.telegram_bot_token
@@ -132,7 +122,7 @@ def configure_runtime(
 
     bot_info = real_bot.get_me()
     bot_username = bot_info.username
-    _active_context = AppContext(
+    ctx = AppContext(
         config=config,
         bot=real_bot,
         fernet=fernet,
@@ -141,8 +131,8 @@ def configure_runtime(
         bot_username=bot_username,
         cleanup_stop_event=cleanup_stop_event,
     )
-    register_handlers(_active_context)
-    return _active_context
+    register_handlers(ctx)
+    return ctx
 
 
 def check_telegram_connection() -> bool:
@@ -209,14 +199,14 @@ def run(
 ) -> None:
     if config is None:
         config = AppConfig.from_env()
+    ctx = configure_runtime(config)
     legacy_handlers = _load_legacy_handlers()
     # Startup helpers still live in the temporary legacy bridge until their
     # small runtime owners are extracted.
     if initialize_database is None:
-        initialize_database = legacy_handlers.initialize_database
+        initialize_database = lambda: legacy_handlers.initialize_database(ctx)
     if recover_user_sessions is None:
-        recover_user_sessions = legacy_handlers.recover_user_sessions
-    ctx = configure_runtime(config)
+        recover_user_sessions = lambda: legacy_handlers.recover_user_sessions(ctx)
 
     startup_message = f"Bot starting with username: {bot_username}"
     print(startup_message)

@@ -13,7 +13,6 @@ from ukrainability_telegram_bot.config import AppConfig
 def reset_runtime(monkeypatch):
     monkeypatch.setattr(runtime, "bot", None)
     monkeypatch.setattr(runtime, "bot_username", None)
-    monkeypatch.setattr(runtime, "_active_context", None)
     yield
 
 
@@ -50,7 +49,6 @@ def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tm
     ctx = runtime.configure_runtime(config)
 
     assert isinstance(ctx, AppContext)
-    assert runtime.require_active_context() is ctx
     assert runtime.bot is real_bot
     assert ctx.bot is real_bot
     assert ctx.config is config
@@ -60,6 +58,11 @@ def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tm
     registered_names = {handler.__name__ for _args, _kwargs, handler in registered_handlers}
     assert "send_welcome" in registered_names
     assert "handle_text_messages" in registered_names
+
+
+def test_runtime_no_longer_exposes_active_context():
+    assert not hasattr(runtime, "_active_context")
+    assert not hasattr(runtime, "require_active_context")
 
 
 def test_run_configures_context_before_startup_tasks(monkeypatch, tmp_path, app_context):
