@@ -16,12 +16,13 @@ from ...telegram_io import (
     safe_send_message,
     send_next_step_prompt,
 )
-from .base import ConsentCallbacks, register
+from .base import ConsentCallbacks, register, resolve_actions
 
 
-def callbacks_from_bridge(bridge: Any) -> ConsentCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> ConsentCallbacks:
+    actions = resolve_actions(ctx, actions)
     return ConsentCallbacks(
-        location_handler=bridge.handle_location_step,
+        location_handler=actions.handle_location_step,
     )
 
 

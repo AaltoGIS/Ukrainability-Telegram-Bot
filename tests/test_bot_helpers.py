@@ -4,6 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from ukrainability_telegram_bot import _legacy as bot
+from ukrainability_telegram_bot import telegram_io
+from ukrainability_telegram_bot.survey.actions import SurveyActions
+from ukrainability_telegram_bot.survey.questions import restart as restart_question
 
 
 def test_telegram_retry_after_coerces_string_and_caps():
@@ -51,18 +54,39 @@ def test_legacy_bridge_does_not_expose_callback_builders(app_context):
     ]
 
 
+def test_legacy_bridge_surface_is_limited(app_context):
+    bridge = bot.create_legacy_bridge(app_context)
+
+    public_names = {
+        name
+        for name in dir(bridge)
+        if not name.startswith("_")
+    }
+    assert public_names == {
+        "clear_callback_state",
+        "ctx",
+        "ensure_session_valid",
+        "register_handlers",
+    }
+
+
 def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path, app_context):
     user_id = 123
-    bridge = bot.create_legacy_bridge(app_context)
-    monkeypatch.setattr(bridge, "clear_message_ids", lambda user_id: None)
-    monkeypatch.setattr(bridge, "send_welcome", lambda **kwargs: None)
+    actions = SurveyActions(app_context)
 
     with app_context.sessions.lock:
         app_context.sessions.data[user_id] = {"language": "en"}
         app_context.sessions.profiles[user_id] = {"consent": False}
 
     try:
-        assert bridge.save_data_and_restart(456, user_id, "en") is True
+        assert restart_question.save_data_and_restart(
+            app_context,
+            456,
+            user_id,
+            "en",
+            False,
+            restart_question.callbacks_from_context(app_context, actions),
+        ) is True
         with sqlite3.connect(app_context.config.db_file) as conn:
             count = conn.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
         assert count == 0
@@ -91,7 +115,13 @@ def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_co
         message=SimpleNamespace(chat=SimpleNamespace(id=chat_id)),
     )
 
-    bridge.handle_callback_error(call, RuntimeError("boom"), "handle_purpose_selection")
+    telegram_io.handle_callback_error(
+        app_context,
+        call,
+        RuntimeError("boom"),
+        "handle_purpose_selection",
+        clear_callback_state=bridge.clear_callback_state,
+    )
 
     session = app_context.sessions.data[user_id]
     assert "awaiting_multiple_select" not in session
@@ -101,18 +131,3 @@ def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_co
     assert "modifying_field" not in session
     assert session["purpose_visit"] == ["Walking"]
     app_context.bot.answer_callback_query.assert_called_once()
-
-
-def test_cleanup_stale_sessions_delegates_to_session_store(monkeypatch, app_context):
-    bridge = bot.create_legacy_bridge(app_context)
-    calls = []
-
-    def evict_inactive(hours):
-        calls.append(hours)
-        return [123, 456]
-
-    monkeypatch.setattr(app_context.sessions, "evict_inactive", evict_inactive)
-
-    bridge.cleanup_stale_sessions(hours_inactive=12)
-
-    assert calls == [12]

@@ -23,14 +23,15 @@ from ...telegram_io import (
     safe_send_message,
     send_keyboard_message,
 )
-from .base import PurposeCallbacks, register
+from .base import PurposeCallbacks, register, resolve_actions
 
 
-def callbacks_from_bridge(bridge: Any) -> PurposeCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> PurposeCallbacks:
+    actions = resolve_actions(ctx, actions)
     return PurposeCallbacks(
-        ask_enjoyment=bridge.ask_enjoyment,
-        ask_final_confirmation=bridge.ask_final_confirmation,
-        clear_callback_state=bridge.clear_callback_state,
+        ask_enjoyment=actions.ask_enjoyment,
+        ask_final_confirmation=actions.ask_final_confirmation,
+        clear_callback_state=actions.clear_callback_state,
     )
 
 

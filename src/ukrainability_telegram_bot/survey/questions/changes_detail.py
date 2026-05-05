@@ -20,7 +20,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 @dataclass(frozen=True)
@@ -30,11 +30,12 @@ class ChangesDetailCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
-def callbacks_from_bridge(bridge: Any) -> ChangesDetailCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> ChangesDetailCallbacks:
+    actions = resolve_actions(ctx, actions)
     return ChangesDetailCallbacks(
-        ask_wishlist=bridge.ask_wishlist,
-        ask_final_confirmation=bridge.ask_final_confirmation,
-        get_anonymous_id=bridge.get_anonymous_id,
+        ask_wishlist=actions.ask_wishlist,
+        ask_final_confirmation=actions.ask_final_confirmation,
+        get_anonymous_id=actions.get_anonymous_id,
     )
 
 

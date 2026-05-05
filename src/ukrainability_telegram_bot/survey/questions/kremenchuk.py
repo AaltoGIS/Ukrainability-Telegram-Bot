@@ -20,7 +20,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 OTHER_OPTION_INDEX = 6
@@ -32,10 +32,11 @@ class KremenchukCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> KremenchukCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> KremenchukCallbacks:
+    actions = resolve_actions(ctx, actions)
     return KremenchukCallbacks(
-        ask_description=bridge.ask_description,
-        ask_final_confirmation=bridge.ask_final_confirmation,
+        ask_description=actions.ask_description,
+        ask_final_confirmation=actions.ask_final_confirmation,
     )
 
 

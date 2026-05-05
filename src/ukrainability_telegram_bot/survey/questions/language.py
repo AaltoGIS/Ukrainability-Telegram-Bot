@@ -16,7 +16,7 @@ from ...telegram_io import (
     send_next_step_prompt,
 )
 from . import consent as consent_question
-from .base import register
+from .base import register, resolve_actions
 
 
 @dataclass(frozen=True)
@@ -24,9 +24,10 @@ class LanguageCallbacks:
     location_handler: Callable[..., Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> LanguageCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> LanguageCallbacks:
+    actions = resolve_actions(ctx, actions)
     return LanguageCallbacks(
-        location_handler=bridge.handle_location_step,
+        location_handler=actions.handle_location_step,
     )
 
 

@@ -19,7 +19,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 SKIP_TO_WISHLIST_INDICES = frozenset({4, 5, 6})
@@ -34,13 +34,14 @@ class RegularityCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
-def callbacks_from_bridge(bridge: Any) -> RegularityCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> RegularityCallbacks:
+    actions = resolve_actions(ctx, actions)
     return RegularityCallbacks(
-        ask_noticed_changes=bridge.ask_noticed_changes,
-        ask_wishlist=bridge.ask_wishlist,
-        ask_final_confirmation=bridge.ask_final_confirmation,
-        clear_dependent_fields=bridge.clear_dependent_fields,
-        get_anonymous_id=bridge.get_anonymous_id,
+        ask_noticed_changes=actions.ask_noticed_changes,
+        ask_wishlist=actions.ask_wishlist,
+        ask_final_confirmation=actions.ask_final_confirmation,
+        clear_dependent_fields=actions.clear_dependent_fields,
+        get_anonymous_id=actions.get_anonymous_id,
     )
 
 
