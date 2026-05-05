@@ -39,6 +39,7 @@ modernization commit.
 - Replaced the hard-coded daily cleanup `time.sleep()` loop with a waitable cleanup event and configurable cadence.
 - Added `stop_cleanup_scheduler()` and locking around cleanup start/stop.
 - Kept opportunistic cleanup on startup, then wait for the configured interval between future cleanup passes.
+- After cleanup errors, retry after the shorter error backoff instead of stacking it with the normal cleanup interval.
 
 ## Remaining Review Items
 

@@ -5356,6 +5356,7 @@ def cleanup_scheduler():
             flow_logger.exception(f"Error in cleanup scheduler: {e}")
             if cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60)):
                 break
+            continue
 
         if cleanup_stop_event.wait(cleanup_interval_seconds):
             break
