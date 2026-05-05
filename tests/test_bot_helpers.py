@@ -41,6 +41,16 @@ def test_legacy_bridge_does_not_expose_session_store_wrappers(app_context):
         assert not hasattr(bridge, name)
 
 
+def test_legacy_bridge_does_not_expose_callback_builders(app_context):
+    bridge = bot.create_legacy_bridge(app_context)
+
+    assert not [
+        name
+        for name in dir(bridge)
+        if name.startswith("_") and name.endswith("_callbacks")
+    ]
+
+
 def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path, app_context):
     user_id = 123
     bridge = bot.create_legacy_bridge(app_context)

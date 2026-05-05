@@ -32,6 +32,13 @@ class KremenchukCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> KremenchukCallbacks:
+    return KremenchukCallbacks(
+        ask_description=bridge.ask_description,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("kremenchuk")
 class KremenchukQuestion:
     name = "kremenchuk"

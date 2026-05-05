@@ -29,6 +29,13 @@ class AccessibilityCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> AccessibilityCallbacks:
+    return AccessibilityCallbacks(
+        ask_regularity=bridge.ask_regularity,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("accessibility")
 class AccessibilityQuestion:
     name = "accessibility"

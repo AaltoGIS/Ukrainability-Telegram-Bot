@@ -34,24 +34,6 @@ from .survey.questions import restart as restart_question
 from .survey.questions import visitor_type as visitor_type_question
 from .survey.questions import welcome as welcome_question
 from .survey.questions import wishlist as wishlist_question
-from .survey.questions.accessibility import AccessibilityCallbacks
-from .survey.questions.changes_detail import ChangesDetailCallbacks
-from .survey.questions.confirmation import ConfirmationCallbacks
-from .survey.questions.demographics import DemographicsCallbacks
-from .survey.questions.duration import DurationCallbacks
-from .survey.questions.enjoyment import EnjoymentCallbacks
-from .survey.questions.frequency import FrequencyCallbacks
-from .survey.questions.kremenchuk import KremenchukCallbacks
-from .survey.questions.noticed_changes import NoticedChangesCallbacks
-from .survey.questions.regularity import RegularityCallbacks
-from .survey.questions.restart import RestartCallbacks
-from .survey.questions.visitor_type import VisitorTypeCallbacks
-from .survey.questions.wishlist import WishlistCallbacks
-from .survey.questions.base import (
-    ConsentCallbacks,
-    DescriptionCallbacks,
-    PurposeCallbacks,
-)
 from . import telegram_io as telegram_io_module
 from .telegram_io import (
     callback_index,
@@ -395,40 +377,16 @@ class LegacyBridge:
         )
 
     # Start, language, and location handlers
-    def _welcome_callbacks(self):
-        return welcome_question.WelcomeCallbacks(
-            update_activity_timestamp=self.update_activity_timestamp,
-            get_user_hash=self.get_user_hash,
-            get_user_nickname=self.get_user_nickname,
-            generate_unique_nickname=self.generate_unique_nickname,
-            save_user_nickname=self.save_user_nickname,
-            send_welcome=self.send_welcome,
-        )
-
-
-    def _language_callbacks(self):
-        return language_question.LanguageCallbacks(
-            location_handler=self.handle_location_step,
-        )
-
-
-    def _location_callbacks(self):
-        return location_question.LocationCallbacks(
-            update_activity_timestamp=self.update_activity_timestamp,
-            send_welcome=self.send_welcome,
-            ask_purpose_visit=self.ask_purpose_visit,
-            location_handler=self.handle_location_step,
-        )
-
-
     def handle_restart(self, call):
-        welcome_question.handle_restart(self.ctx, call, self._welcome_callbacks())
+        welcome_question.handle_restart(
+            self.ctx, call, welcome_question.callbacks_from_bridge(self)
+        )
 
 
     def send_welcome(self, message=None, chat_id=None, user_id=None, start_param=None):
         welcome_question.send_welcome(
             self.ctx,
-            callbacks=self._welcome_callbacks(),
+            callbacks=welcome_question.callbacks_from_bridge(self),
             message=message,
             chat_id=chat_id,
             user_id=user_id,
@@ -437,7 +395,9 @@ class LegacyBridge:
 
 
     def handle_language_selection(self, call):
-        language_question.handle_language_selection(self.ctx, call, self._language_callbacks())
+        language_question.handle_language_selection(
+            self.ctx, call, language_question.callbacks_from_bridge(self)
+        )
 
     def handle_consent(self, call):
         consent_question.handle_consent(self.ctx, call)
@@ -447,14 +407,16 @@ class LegacyBridge:
         consent_question.handle_post_consent_continue(
             self.ctx,
             call,
-            ConsentCallbacks(location_handler=self.handle_location_step),
+            consent_question.callbacks_from_bridge(self),
         )
 
 
 
 
     def handle_location_step(self, message):
-        location_question.handle_location_step(self.ctx, message, self._location_callbacks())
+        location_question.handle_location_step(
+            self.ctx, message, location_question.callbacks_from_bridge(self)
+        )
 
 
 
@@ -469,11 +431,7 @@ class LegacyBridge:
         purpose_question.handle_purpose_selection(
             self.ctx,
             call,
-            PurposeCallbacks(
-                ask_enjoyment=self.ask_enjoyment,
-                ask_final_confirmation=self.ask_final_confirmation,
-                clear_callback_state=self.clear_callback_state,
-            ),
+            purpose_question.callbacks_from_bridge(self),
         )
 
 
@@ -496,10 +454,7 @@ class LegacyBridge:
         enjoyment_question.handle_enjoyment_selection(
             self.ctx,
             call,
-            EnjoymentCallbacks(
-                ask_visitor_type=self.ask_visitor_type,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            enjoyment_question.callbacks_from_bridge(self),
         )
 
 
@@ -507,10 +462,7 @@ class LegacyBridge:
         enjoyment_question.confirm_enjoyment(
             self.ctx,
             call,
-            EnjoymentCallbacks(
-                ask_visitor_type=self.ask_visitor_type,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            enjoyment_question.callbacks_from_bridge(self),
         )
 
 
@@ -523,10 +475,7 @@ class LegacyBridge:
         visitor_type_question.handle_visitor_type_selection(
             self.ctx,
             call,
-            VisitorTypeCallbacks(
-                ask_duration=self.ask_duration,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            visitor_type_question.callbacks_from_bridge(self),
         )
 
 
@@ -550,10 +499,7 @@ class LegacyBridge:
         duration_question.confirm_duration(
             self.ctx,
             call,
-            DurationCallbacks(
-                ask_accessibility=self.ask_accessibility,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            duration_question.callbacks_from_bridge(self),
         )
 
 
@@ -566,10 +512,7 @@ class LegacyBridge:
         accessibility_question.handle_accessibility_selection(
             self.ctx,
             call,
-            AccessibilityCallbacks(
-                ask_regularity=self.ask_regularity,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            accessibility_question.callbacks_from_bridge(self),
         )
 
 
@@ -592,13 +535,7 @@ class LegacyBridge:
         regularity_question.confirm_regularity(
             self.ctx,
             call,
-            RegularityCallbacks(
-                ask_noticed_changes=self.ask_noticed_changes,
-                ask_wishlist=self.ask_wishlist,
-                ask_final_confirmation=self.ask_final_confirmation,
-                clear_dependent_fields=self.clear_dependent_fields,
-                get_anonymous_id=self.get_anonymous_id,
-            ),
+            regularity_question.callbacks_from_bridge(self),
         )
 
 
@@ -610,13 +547,7 @@ class LegacyBridge:
         frequency_question.handle_frequency_change_selection(
             self.ctx,
             call,
-            FrequencyCallbacks(
-                ask_noticed_changes=self.ask_noticed_changes,
-                ask_wishlist=self.ask_wishlist,
-                ask_final_confirmation=self.ask_final_confirmation,
-                clear_dependent_fields=self.clear_dependent_fields,
-                get_anonymous_id=self.get_anonymous_id,
-            ),
+            frequency_question.callbacks_from_bridge(self),
         )
 
 
@@ -633,13 +564,7 @@ class LegacyBridge:
         noticed_changes_question.confirm_noticed_changes(
             self.ctx,
             call,
-            NoticedChangesCallbacks(
-                ask_changes_detail=self.ask_changes_detail,
-                ask_wishlist=self.ask_wishlist,
-                ask_final_confirmation=self.ask_final_confirmation,
-                clear_dependent_fields=self.clear_dependent_fields,
-                get_anonymous_id=self.get_anonymous_id,
-            ),
+            noticed_changes_question.callbacks_from_bridge(self),
         )
 
 
@@ -651,11 +576,7 @@ class LegacyBridge:
         changes_detail_question.handle_changes_detail_selection(
             self.ctx,
             call,
-            ChangesDetailCallbacks(
-                ask_wishlist=self.ask_wishlist,
-                ask_final_confirmation=self.ask_final_confirmation,
-                get_anonymous_id=self.get_anonymous_id,
-            ),
+            changes_detail_question.callbacks_from_bridge(self),
         )
 
 
@@ -674,34 +595,21 @@ class LegacyBridge:
         wishlist_question.handle_wishlist_selection(
             self.ctx,
             call,
-            WishlistCallbacks(
-                ask_age=self.ask_age,
-                ask_final_confirmation=self.ask_final_confirmation,
-                get_anonymous_id=self.get_anonymous_id,
-            ),
+            wishlist_question.callbacks_from_bridge(self),
         )
 
 
     def update_wishlist_keyboard(self, message, user_id, language, options):
         wishlist_question.update_wishlist_keyboard(self.ctx, message, user_id, language, options)
 
-
-
     # Socioeconomic questions
-    def _demographics_callbacks(self):
-        return DemographicsCallbacks(
-            ask_gender=self.ask_gender,
-            ask_occupation=self.ask_occupation,
-            ask_income=self.ask_income,
-            ask_kremenchuk=self.ask_kremenchuk,
-            ask_description=self.ask_description,
-            ask_final_confirmation=self.ask_final_confirmation,
-        )
-
-
     def ask_age(self, chat_id, user_id, language):
         demographics_question.ask_age(
-            self.ctx, chat_id, user_id, language, self._demographics_callbacks()
+            self.ctx,
+            chat_id,
+            user_id,
+            language,
+            demographics_question.callbacks_from_bridge(self),
         )
 
 
@@ -710,12 +618,18 @@ class LegacyBridge:
 
 
     def confirm_age(self, call):
-        demographics_question.confirm_age(self.ctx, call, self._demographics_callbacks())
+        demographics_question.confirm_age(
+            self.ctx, call, demographics_question.callbacks_from_bridge(self)
+        )
 
 
     def ask_gender(self, chat_id, user_id, language):
         demographics_question.ask_gender(
-            self.ctx, chat_id, user_id, language, self._demographics_callbacks()
+            self.ctx,
+            chat_id,
+            user_id,
+            language,
+            demographics_question.callbacks_from_bridge(self),
         )
 
 
@@ -724,12 +638,18 @@ class LegacyBridge:
 
 
     def confirm_gender(self, call):
-        demographics_question.confirm_gender(self.ctx, call, self._demographics_callbacks())
+        demographics_question.confirm_gender(
+            self.ctx, call, demographics_question.callbacks_from_bridge(self)
+        )
 
 
     def ask_occupation(self, chat_id, user_id, language):
         demographics_question.ask_occupation(
-            self.ctx, chat_id, user_id, language, self._demographics_callbacks()
+            self.ctx,
+            chat_id,
+            user_id,
+            language,
+            demographics_question.callbacks_from_bridge(self),
         )
 
 
@@ -738,12 +658,18 @@ class LegacyBridge:
 
 
     def confirm_occupation(self, call):
-        demographics_question.confirm_occupation(self.ctx, call, self._demographics_callbacks())
+        demographics_question.confirm_occupation(
+            self.ctx, call, demographics_question.callbacks_from_bridge(self)
+        )
 
 
     def ask_income(self, chat_id, user_id, language):
         demographics_question.ask_income(
-            self.ctx, chat_id, user_id, language, self._demographics_callbacks()
+            self.ctx,
+            chat_id,
+            user_id,
+            language,
+            demographics_question.callbacks_from_bridge(self),
         )
 
 
@@ -752,7 +678,9 @@ class LegacyBridge:
 
 
     def confirm_income(self, call):
-        demographics_question.confirm_income(self.ctx, call, self._demographics_callbacks())
+        demographics_question.confirm_income(
+            self.ctx, call, demographics_question.callbacks_from_bridge(self)
+        )
 
 
     # Kremenchuk handler modifications
@@ -764,10 +692,7 @@ class LegacyBridge:
         kremenchuk_question.handle_kremenchuk_selection(
             self.ctx,
             call,
-            KremenchukCallbacks(
-                ask_description=self.ask_description,
-                ask_final_confirmation=self.ask_final_confirmation,
-            ),
+            kremenchuk_question.callbacks_from_bridge(self),
         )
 
 
@@ -785,10 +710,7 @@ class LegacyBridge:
             chat_id,
             user_id,
             language,
-            DescriptionCallbacks(
-                ask_final_confirmation=self.ask_final_confirmation,
-                description_handler=self.handle_description,
-            ),
+            description_question.callbacks_from_bridge(self),
         )
 
 
@@ -796,10 +718,7 @@ class LegacyBridge:
         description_question.handle_description_skip(
             self.ctx,
             call,
-            DescriptionCallbacks(
-                ask_final_confirmation=self.ask_final_confirmation,
-                description_handler=self.handle_description,
-            ),
+            description_question.callbacks_from_bridge(self),
         )
 
 
@@ -807,37 +726,11 @@ class LegacyBridge:
         description_question.handle_description(
             self.ctx,
             message,
-            DescriptionCallbacks(
-                ask_final_confirmation=self.ask_final_confirmation,
-                description_handler=self.handle_description,
-            ),
+            description_question.callbacks_from_bridge(self),
         )
 
 
     # Response confirmation and modification
-    def _confirmation_callbacks(self):
-        return ConfirmationCallbacks(
-            ask_enjoyment=self.ask_enjoyment,
-            ask_purpose_visit=self.ask_purpose_visit,
-            ask_regularity=self.ask_regularity,
-            ask_accessibility=self.ask_accessibility,
-            ask_noticed_changes=self.ask_noticed_changes,
-            ask_changes_detail=self.ask_changes_detail,
-            ask_wishlist=self.ask_wishlist,
-            ask_kremenchuk=self.ask_kremenchuk,
-            ask_age=self.ask_age,
-            ask_gender=self.ask_gender,
-            ask_occupation=self.ask_occupation,
-            ask_income=self.ask_income,
-            ask_description=self.ask_description,
-            ask_visitor_type=self.ask_visitor_type,
-            ask_duration=self.ask_duration,
-            ask_continue_or_stop=self.ask_continue_or_stop,
-            save_data_and_restart=self.save_data_and_restart,
-            get_anonymous_id=self.get_anonymous_id,
-        )
-
-
     def ask_final_confirmation(self, chat_id, user_id, language):
         confirmation_question.ask_final_confirmation(self.ctx, chat_id, user_id, language)
 
@@ -848,13 +741,17 @@ class LegacyBridge:
 
     def handle_final_confirmation_choice(self, call):
         confirmation_question.handle_final_confirmation_choice(
-            self.ctx, call, self._confirmation_callbacks()
+            self.ctx, call, confirmation_question.callbacks_from_bridge(self)
         )
 
 
     def ask_which_responses_to_modify(self, chat_id, user_id, language):
         confirmation_question.ask_which_responses_to_modify(
-            self.ctx, chat_id, user_id, language, self._confirmation_callbacks()
+            self.ctx,
+            chat_id,
+            user_id,
+            language,
+            confirmation_question.callbacks_from_bridge(self),
         )
 
 
@@ -864,7 +761,7 @@ class LegacyBridge:
 
     def handle_modification_selection(self, call):
         confirmation_question.handle_modification_selection(
-            self.ctx, call, self._confirmation_callbacks()
+            self.ctx, call, confirmation_question.callbacks_from_bridge(self)
         )
 
 
@@ -891,25 +788,13 @@ class LegacyBridge:
 
 
     # Continue or stop handlers
-    def _restart_callbacks(self):
-        return RestartCallbacks(
-            location_handler=self.handle_location_step,
-            send_welcome=self.send_welcome,
-            get_user_hash=self.get_user_hash,
-            get_user_nickname=self.get_user_nickname,
-            generate_unique_nickname=self.generate_unique_nickname,
-            save_user_nickname=self.save_user_nickname,
-            clear_message_ids=self.clear_message_ids,
-        )
-
-
     def ask_continue_or_stop(self, chat_id, user_id, language):
         restart_question.ask_continue_or_stop(self.ctx, chat_id, user_id, language)
 
 
     def handle_continue_or_stop_selection(self, call):
         restart_question.handle_continue_or_stop_selection(
-            self.ctx, call, self._restart_callbacks()
+            self.ctx, call, restart_question.callbacks_from_bridge(self)
         )
 
 
@@ -1048,7 +933,7 @@ class LegacyBridge:
             user_id,
             language,
             restart_survey,
-            self._restart_callbacks(),
+            restart_question.callbacks_from_bridge(self),
         )
 
 

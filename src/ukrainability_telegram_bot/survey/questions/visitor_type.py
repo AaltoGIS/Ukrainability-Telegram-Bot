@@ -29,6 +29,13 @@ class VisitorTypeCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> VisitorTypeCallbacks:
+    return VisitorTypeCallbacks(
+        ask_duration=bridge.ask_duration,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("visitor_type")
 class VisitorTypeQuestion:
     name = "visitor_type"

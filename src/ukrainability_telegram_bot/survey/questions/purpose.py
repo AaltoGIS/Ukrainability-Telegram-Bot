@@ -26,6 +26,14 @@ from ...telegram_io import (
 from .base import PurposeCallbacks, register
 
 
+def callbacks_from_bridge(bridge: Any) -> PurposeCallbacks:
+    return PurposeCallbacks(
+        ask_enjoyment=bridge.ask_enjoyment,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        clear_callback_state=bridge.clear_callback_state,
+    )
+
+
 @register("purpose")
 class PurposeQuestion:
     name = "purpose"

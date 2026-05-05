@@ -28,6 +28,13 @@ class DurationCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> DurationCallbacks:
+    return DurationCallbacks(
+        ask_accessibility=bridge.ask_accessibility,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("duration")
 class DurationQuestion:
     name = "duration"

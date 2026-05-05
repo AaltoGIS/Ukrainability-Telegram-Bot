@@ -28,6 +28,13 @@ class EnjoymentCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> EnjoymentCallbacks:
+    return EnjoymentCallbacks(
+        ask_visitor_type=bridge.ask_visitor_type,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("enjoyment")
 class EnjoymentQuestion:
     name = "enjoyment"

@@ -34,6 +34,16 @@ class NoticedChangesCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
+def callbacks_from_bridge(bridge: Any) -> NoticedChangesCallbacks:
+    return NoticedChangesCallbacks(
+        ask_changes_detail=bridge.ask_changes_detail,
+        ask_wishlist=bridge.ask_wishlist,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        clear_dependent_fields=bridge.clear_dependent_fields,
+        get_anonymous_id=bridge.get_anonymous_id,
+    )
+
+
 @register("noticed_changes")
 class NoticedChangesQuestion:
     name = "noticed_changes"

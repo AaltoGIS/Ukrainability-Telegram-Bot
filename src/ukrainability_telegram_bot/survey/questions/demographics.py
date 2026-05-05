@@ -32,6 +32,17 @@ class DemographicsCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> DemographicsCallbacks:
+    return DemographicsCallbacks(
+        ask_gender=bridge.ask_gender,
+        ask_occupation=bridge.ask_occupation,
+        ask_income=bridge.ask_income,
+        ask_kremenchuk=bridge.ask_kremenchuk,
+        ask_description=bridge.ask_description,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+    )
+
+
 @register("age")
 class AgeQuestion:
     name = "age"

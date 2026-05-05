@@ -76,6 +76,6 @@ security, and correctness fixes — not user-visible behaviour changes.
 ## Open work (planned, not yet done)
 
 - Reducing the remaining `_legacy.py` helper bridge further once text-message custom-input handling has a dedicated module.
-- Continuing to shrink `_legacy.py` by moving callback builders and the text-message fallback router into their final modules.
+- Continuing to shrink `_legacy.py` by moving the text-message fallback router into its final module.
 - Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.

@@ -30,6 +30,14 @@ class WishlistCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
+def callbacks_from_bridge(bridge: Any) -> WishlistCallbacks:
+    return WishlistCallbacks(
+        ask_age=bridge.ask_age,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        get_anonymous_id=bridge.get_anonymous_id,
+    )
+
+
 @register("wishlist")
 class WishlistQuestion:
     name = "wishlist"

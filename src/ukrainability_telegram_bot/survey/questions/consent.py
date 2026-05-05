@@ -19,6 +19,12 @@ from ...telegram_io import (
 from .base import ConsentCallbacks, register
 
 
+def callbacks_from_bridge(bridge: Any) -> ConsentCallbacks:
+    return ConsentCallbacks(
+        location_handler=bridge.handle_location_step,
+    )
+
+
 @register("consent")
 class ConsentQuestion:
     name = "consent"
