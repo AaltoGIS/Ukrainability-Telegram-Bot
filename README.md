@@ -2,7 +2,7 @@
 
 <!-- TODO: add citation to the accompanying article once confirmed -->
 The Ukrainability Telegram Bot turns Telegram, a messenger already used daily by
-participants, into a low-cost, anonymous public participatory GIS (PPGIS) tool
+many people, into a low-cost, anonymous public participatory GIS (PPGIS) tool
 for mapping how people experience outdoor places, designed with GDPR-oriented
 privacy safeguards. Instead of asking participants to install a new app or learn
 an unfamiliar interface, the survey runs entirely inside Telegram: participants
@@ -265,8 +265,7 @@ python3 -m build
 Publishing to PyPI is a separate maintainer action requiring PyPI credentials;
 this repository only prepares the package for building and publishing.
 
-## Citing This Work
+## Maintainers
 
-<!-- TODO: add BibTeX once the canonical reference for the accompanying article is confirmed -->
-A citation entry will be added once the canonical reference for the accompanying
-article is confirmed. Until then, please contact the maintainers.
+- Oleksandr Karasov, GIST Lab, Aalto University
+- Henrikki Tenkanen, GIST Lab, Aalto University

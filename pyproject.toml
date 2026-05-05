@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 license = "MIT"
 authors = [
     { name = "Oleksandr Karasov", email = "oleksa.karasov@gmail.com" },
+    { name = "Henrikki Tenkanen", email = "henrikki.tenkanen@aalto.fi" },
 ]
 keywords = ["telegram", "survey", "ukrainability", "bot"]
 classifiers = [
