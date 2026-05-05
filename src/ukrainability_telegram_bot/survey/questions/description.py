@@ -31,19 +31,20 @@ def ask_description(
     callbacks: DescriptionCallbacks,
 ) -> None:
     try:
-        data = ctx.sessions.data.setdefault(user_id, {})
-        profile = ctx.sessions.profiles.get(user_id, {})
-        if "kremenchuk" not in data and "kremenchuk" in profile:
-            data["kremenchuk"] = profile["kremenchuk"]
+        if ctx.sessions.get_data(user_id, "kremenchuk") is None:
+            profile_kremenchuk = ctx.sessions.get_profile(user_id, "kremenchuk")
+            if profile_kremenchuk is not None:
+                ctx.sessions.set_data(user_id, "kremenchuk", profile_kremenchuk)
 
-        if data.get("description_done") and not (
-            data.get("modifying") and data.get("modifying_field") == "description"
+        if ctx.sessions.get_data(user_id, "description_done") and not (
+            ctx.sessions.get_data(user_id, "modifying")
+            and ctx.sessions.get_data(user_id, "modifying_field") == "description"
         ):
             callbacks.ask_final_confirmation(chat_id, user_id, language)
             return
 
-        if data.get("modifying"):
-            field_modified = data.get("modifying_field")
+        if ctx.sessions.get_data(user_id, "modifying"):
+            field_modified = ctx.sessions.get_data(user_id, "modifying_field")
             if field_modified != "description":
                 callbacks.ask_final_confirmation(chat_id, user_id, language)
                 return
@@ -69,11 +70,12 @@ def ask_description(
         )
     except Exception as exc:
         logging.exception(f"Error in ask_description: {exc}")
-        ctx.bot.send_message(
+        safe_send_message(
+            ctx,
             chat_id,
             messages[language].get(
                 "error_occurred",
-                "An error occurred. Please try again later.",
+                messages["en"]["error_occurred"],
             ),
         )
 
@@ -86,19 +88,19 @@ def handle_description_skip(
     try:
         chat_id = call.message.chat.id
         user_id = call.from_user.id
-        language = ctx.sessions.data[user_id]["language"]
+        language = ctx.sessions.get_data(user_id, "language", "en")
         ctx.bot.clear_step_handler_by_chat_id(chat_id)
         ctx.bot.edit_message_reply_markup(
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=None,
         )
-        ctx.sessions.data[user_id]["description_done"] = True
-        ctx.bot.send_message(chat_id, messages[language]["description_skipped"])
+        ctx.sessions.set_data(user_id, "description_done", True)
+        safe_send_message(ctx, chat_id, messages[language]["description_skipped"])
         callbacks.ask_final_confirmation(chat_id, user_id, language)
     except Exception as exc:
         logging.exception(f"Error in handle_description_skip: {exc}")
-        ctx.bot.send_message(chat_id, "An error occurred. Please try again later.")
+        safe_send_message(ctx, chat_id, messages["en"]["error_occurred"])
 
 
 def handle_description(
@@ -119,7 +121,7 @@ def handle_description(
                 safe_send_message(
                     ctx,
                     chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
+                    messages["en"]["please_use_start"],
                 )
                 return
 
@@ -206,7 +208,7 @@ def handle_description(
         try:
             language = ctx.sessions.get_data(user_id, "language", "en")
             error_msg = messages.get(language, {}).get(
-                "error_occurred", "An error occurred. Please try again later."
+                "error_occurred", messages["en"]["error_occurred"]
             )
             safe_send_message(ctx, chat_id, error_msg)
             inline_kb = types.InlineKeyboardMarkup()
@@ -220,12 +222,12 @@ def handle_description(
                 chat_id,
                 messages.get(language, {}).get(
                     "description_retry_or_skip",
-                    "Would you like to try again or skip the description?",
+                    messages["en"]["description_retry_or_skip"],
                 ),
                 reply_markup=inline_kb,
             )
         except Exception:
-            ctx.bot.reply_to(message, "An error occurred. Please try again later.")
+            ctx.bot.reply_to(message, messages["en"]["error_occurred"])
 
 
 def _download_voice_with_retry(ctx: AppContext, message: Any) -> bytes:

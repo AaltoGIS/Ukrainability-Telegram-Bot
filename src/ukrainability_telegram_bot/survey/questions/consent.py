@@ -9,7 +9,13 @@ from telebot import types
 
 from ...app import AppContext
 from ...messages import messages
-from ...telegram_io import callback_index, escape_html, send_next_step_prompt
+from ...telegram_io import (
+    callback_index,
+    escape_html,
+    safe_answer_callback,
+    safe_send_message,
+    send_next_step_prompt,
+)
 from .base import ConsentCallbacks, register
 
 
@@ -26,7 +32,8 @@ class ConsentQuestion:
             for idx, option in enumerate(options)
         ]
         inline_kb.add(*buttons)
-        ctx.bot.send_message(
+        safe_send_message(
+            ctx,
             chat_id,
             messages[language]["project_intro"],
             parse_mode="HTML",
@@ -42,24 +49,25 @@ def handle_consent(ctx: AppContext, call: Any) -> None:
         chat_id = call.message.chat.id
         user_id = call.from_user.id
 
-        if user_id not in ctx.sessions.data or "language" not in ctx.sessions.data[user_id]:
-            if user_id in ctx.sessions.profiles and "language" in ctx.sessions.profiles[user_id]:
-                ctx.sessions.data.setdefault(user_id, {})["language"] = (
-                    ctx.sessions.profiles[user_id]["language"]
-                )
+        language = ctx.sessions.get_data(user_id, "language")
+        if not language:
+            profile_language = ctx.sessions.get_profile(user_id, "language")
+            if profile_language:
+                language = profile_language
+                ctx.sessions.set_data(user_id, "language", language)
             else:
-                ctx.bot.send_message(
+                safe_send_message(
+                    ctx,
                     chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
+                    messages["en"]["please_use_start"],
                 )
                 return
 
-        language = ctx.sessions.data[user_id]["language"]
         consent_options = messages[language]["consent_options"]
         try:
             idx = callback_index(call.data, "consent", consent_options)
         except (ValueError, IndexError):
-            ctx.bot.answer_callback_query(call.id, messages[language]["invalid_selection"])
+            safe_answer_callback(ctx, call, messages[language]["invalid_selection"])
             return
 
         consent_response = consent_options[idx]
@@ -70,50 +78,52 @@ def handle_consent(ctx: AppContext, call: Any) -> None:
         )
 
         if consent_response == consent_options[0]:
-            nickname = ctx.sessions.data[user_id]["nickname"]
+            nickname = ctx.sessions.get_data(user_id, "nickname")
             consent_message = messages[language]["consent_given"].format(
                 nickname=f"<b>{escape_html(nickname)}</b>"
             )
-            ctx.sessions.profiles.setdefault(user_id, {})["consent"] = True
-            ctx.bot.answer_callback_query(
-                call.id,
-                "Thank you for agreeing to participate!"
-                if language == "en"
-                else "Дякуємо за вашу згоду на участь!",
+            ctx.sessions.set_profile(user_id, "consent", True)
+            safe_answer_callback(
+                ctx,
+                call,
+                messages[language]["consent_acknowledgement"],
             )
-            continue_text = "Continue" if language == "en" else "Продовжити"
             inline_kb = types.InlineKeyboardMarkup()
             continue_button = types.InlineKeyboardButton(
-                continue_text, callback_data="post_consent_continue"
+                messages[language]["continue_button"],
+                callback_data="post_consent_continue",
             )
             inline_kb.add(continue_button)
-            ctx.bot.send_message(
+            safe_send_message(
+                ctx,
                 chat_id,
                 consent_message,
                 parse_mode="HTML",
                 reply_markup=inline_kb,
             )
         elif consent_response == consent_options[1]:
-            ctx.sessions.profiles.setdefault(user_id, {})["consent"] = False
+            ctx.sessions.set_profile(user_id, "consent", False)
             inline_kb = types.InlineKeyboardMarkup()
             restart_button = types.InlineKeyboardButton(
                 text=messages[language]["restart_button"], callback_data="restart"
             )
             inline_kb.add(restart_button)
-            ctx.bot.answer_callback_query(
-                call.id,
-                "Thank you for your time." if language == "en" else "Дякуємо за ваш час.",
+            safe_answer_callback(
+                ctx,
+                call,
+                messages[language]["consent_thanks"],
             )
-            ctx.bot.send_message(
+            safe_send_message(
+                ctx,
                 chat_id,
                 messages[language]["consent_denied"],
                 reply_markup=inline_kb,
             )
         else:
-            ctx.bot.answer_callback_query(call.id, messages[language]["invalid_selection"])
+            safe_answer_callback(ctx, call, messages[language]["invalid_selection"])
     except Exception as exc:
         logging.exception(f"Error in handle_consent: {exc}")
-        ctx.bot.send_message(chat_id, "An error occurred. Please try again later.")
+        safe_send_message(ctx, chat_id, messages["en"]["error_occurred"])
 
 
 def handle_post_consent_continue(
@@ -124,7 +134,7 @@ def handle_post_consent_continue(
     try:
         chat_id = call.message.chat.id
         user_id = call.from_user.id
-        language = ctx.sessions.data[user_id]["language"]
+        language = ctx.sessions.get_data(user_id, "language", "en")
         ctx.bot.edit_message_reply_markup(
             chat_id=chat_id,
             message_id=call.message.message_id,
@@ -138,4 +148,4 @@ def handle_post_consent_continue(
         )
     except Exception as exc:
         logging.exception(f"Error in handle_post_consent_continue: {exc}")
-        ctx.bot.send_message(chat_id, "An error occurred. Please try again later.")
+        safe_send_message(ctx, chat_id, messages["en"]["error_occurred"])

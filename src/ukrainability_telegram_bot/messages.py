@@ -24,7 +24,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Be sure to remember this ID – it will unlock additional benefits for you after completing the survey."
         ),
         'consent_denied': "Thank you for your time. If you change your mind, you can restart the bot.",
+        'consent_acknowledgement': "Thank you for agreeing to participate!",
+        'consent_thanks': "Thank you for your time.",
         'restart_button': "Restart",
+        'continue_button': "Continue",
+        'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "This survey covers the area of the left bank waterfront of the Dnipro River"
             " in the city of Kremenchuk and its surroundings. It may also include Student Park,"
@@ -254,7 +258,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Будь-ласка, запам'ятайте цей ID – він відкриє вам додаткові переваги після завершення опитування"
         ),
         'consent_denied': "Дякуємо за ваш час. Якщо ви передумаєте, ви можете перезапустити бота.",
+        'consent_acknowledgement': "Дякуємо за вашу згоду на участь!",
+        'consent_thanks': "Дякуємо за ваш час.",
         'restart_button': "Перезапустити",
+        'continue_button': "Продовжити",
+        'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "Дане опитування розглядає територію набережної лівого берега річки Дніпро в місті Кременчук "
             "та на його околицях. Також можуть бути позначені Студентський парк, Придніпровський парк, "
