@@ -33,6 +33,16 @@ class FrequencyCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
+def callbacks_from_bridge(bridge: Any) -> FrequencyCallbacks:
+    return FrequencyCallbacks(
+        ask_noticed_changes=bridge.ask_noticed_changes,
+        ask_wishlist=bridge.ask_wishlist,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        clear_dependent_fields=bridge.clear_dependent_fields,
+        get_anonymous_id=bridge.get_anonymous_id,
+    )
+
+
 @register("frequency_change")
 class FrequencyQuestion:
     name = "frequency_change"

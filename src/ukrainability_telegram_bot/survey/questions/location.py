@@ -21,6 +21,15 @@ class LocationCallbacks:
     location_handler: Callable[..., Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> LocationCallbacks:
+    return LocationCallbacks(
+        update_activity_timestamp=bridge.update_activity_timestamp,
+        send_welcome=bridge.send_welcome,
+        ask_purpose_visit=bridge.ask_purpose_visit,
+        location_handler=bridge.handle_location_step,
+    )
+
+
 def handle_location_step(
     ctx: AppContext,
     message: Any,

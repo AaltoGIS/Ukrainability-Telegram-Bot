@@ -24,6 +24,12 @@ class LanguageCallbacks:
     location_handler: Callable[..., Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> LanguageCallbacks:
+    return LanguageCallbacks(
+        location_handler=bridge.handle_location_step,
+    )
+
+
 @register("language")
 class LanguageQuestion:
     name = "language"

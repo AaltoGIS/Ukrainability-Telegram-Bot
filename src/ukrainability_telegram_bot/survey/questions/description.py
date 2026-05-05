@@ -23,6 +23,13 @@ from ...voice import new_voice_filename, safe_nickname_directory
 from .base import DescriptionCallbacks
 
 
+def callbacks_from_bridge(bridge: Any) -> DescriptionCallbacks:
+    return DescriptionCallbacks(
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        description_handler=bridge.handle_description,
+    )
+
+
 def ask_description(
     ctx: AppContext,
     chat_id: int,

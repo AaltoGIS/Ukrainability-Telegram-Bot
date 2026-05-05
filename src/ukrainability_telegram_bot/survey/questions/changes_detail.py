@@ -30,6 +30,14 @@ class ChangesDetailCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
+def callbacks_from_bridge(bridge: Any) -> ChangesDetailCallbacks:
+    return ChangesDetailCallbacks(
+        ask_wishlist=bridge.ask_wishlist,
+        ask_final_confirmation=bridge.ask_final_confirmation,
+        get_anonymous_id=bridge.get_anonymous_id,
+    )
+
+
 @register("changes_detail")
 class ChangesDetailQuestion:
     name = "changes_detail"

@@ -56,6 +56,18 @@ class RestartCallbacks:
     clear_message_ids: Callable[[int], Any]
 
 
+def callbacks_from_bridge(bridge: Any) -> RestartCallbacks:
+    return RestartCallbacks(
+        location_handler=bridge.handle_location_step,
+        send_welcome=bridge.send_welcome,
+        get_user_hash=bridge.get_user_hash,
+        get_user_nickname=bridge.get_user_nickname,
+        generate_unique_nickname=bridge.generate_unique_nickname,
+        save_user_nickname=bridge.save_user_nickname,
+        clear_message_ids=bridge.clear_message_ids,
+    )
+
+
 @register("continue")
 class ContinueQuestion:
     name = "continue"

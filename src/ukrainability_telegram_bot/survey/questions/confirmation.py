@@ -50,6 +50,29 @@ class ConfirmationCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
+def callbacks_from_bridge(bridge: Any) -> ConfirmationCallbacks:
+    return ConfirmationCallbacks(
+        ask_enjoyment=bridge.ask_enjoyment,
+        ask_purpose_visit=bridge.ask_purpose_visit,
+        ask_regularity=bridge.ask_regularity,
+        ask_accessibility=bridge.ask_accessibility,
+        ask_noticed_changes=bridge.ask_noticed_changes,
+        ask_changes_detail=bridge.ask_changes_detail,
+        ask_wishlist=bridge.ask_wishlist,
+        ask_kremenchuk=bridge.ask_kremenchuk,
+        ask_age=bridge.ask_age,
+        ask_gender=bridge.ask_gender,
+        ask_occupation=bridge.ask_occupation,
+        ask_income=bridge.ask_income,
+        ask_description=bridge.ask_description,
+        ask_visitor_type=bridge.ask_visitor_type,
+        ask_duration=bridge.ask_duration,
+        ask_continue_or_stop=bridge.ask_continue_or_stop,
+        save_data_and_restart=bridge.save_data_and_restart,
+        get_anonymous_id=bridge.get_anonymous_id,
+    )
+
+
 @register("final_confirmation")
 class FinalConfirmationQuestion:
     name = "final_confirmation"
