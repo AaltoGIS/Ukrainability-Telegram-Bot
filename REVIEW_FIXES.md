@@ -41,6 +41,7 @@ modernization commit.
 - Kept opportunistic cleanup on startup, then wait for the configured interval between future cleanup passes.
 - After cleanup errors, retry after the shorter error backoff instead of stacking it with the normal cleanup interval.
 - Extracted cleanup scheduling and voice-retention cleanup into `cleanup.py` with temporary bind-set dependencies; Phase 2 of the planned refactor will replace this with `AppContext`.
+- Extracted Telegram send/edit/callback helpers and the message-id registry into `telegram_io.py` with temporary bind-set dependencies; Phase 2 will replace this with `AppContext`.
 
 ## Remaining Review Items
 
