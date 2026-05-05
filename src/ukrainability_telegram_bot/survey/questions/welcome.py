@@ -12,7 +12,7 @@ from ...app import AppContext
 from ...messages import messages
 from ...telegram_io import escape_html, safe_answer_callback, safe_send_message
 from . import consent as consent_question
-from .base import register
+from .base import register, resolve_actions
 
 
 @dataclass(frozen=True)
@@ -25,14 +25,15 @@ class WelcomeCallbacks:
     send_welcome: Callable[..., Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> WelcomeCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> WelcomeCallbacks:
+    actions = resolve_actions(ctx, actions)
     return WelcomeCallbacks(
-        update_activity_timestamp=bridge.update_activity_timestamp,
-        get_user_hash=bridge.get_user_hash,
-        get_user_nickname=bridge.get_user_nickname,
-        generate_unique_nickname=bridge.generate_unique_nickname,
-        save_user_nickname=bridge.save_user_nickname,
-        send_welcome=bridge.send_welcome,
+        update_activity_timestamp=actions.update_activity_timestamp,
+        get_user_hash=actions.get_user_hash,
+        get_user_nickname=actions.get_user_nickname,
+        generate_unique_nickname=actions.generate_unique_nickname,
+        save_user_nickname=actions.save_user_nickname,
+        send_welcome=actions.send_welcome,
     )
 
 

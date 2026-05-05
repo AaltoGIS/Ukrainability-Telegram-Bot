@@ -24,7 +24,7 @@ from ...telegram_io import (
     safe_send_message,
     send_next_step_prompt,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 EXPERIENCE_KEYS = [
@@ -56,15 +56,16 @@ class RestartCallbacks:
     clear_message_ids: Callable[[int], Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> RestartCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> RestartCallbacks:
+    actions = resolve_actions(ctx, actions)
     return RestartCallbacks(
-        location_handler=bridge.handle_location_step,
-        send_welcome=bridge.send_welcome,
-        get_user_hash=bridge.get_user_hash,
-        get_user_nickname=bridge.get_user_nickname,
-        generate_unique_nickname=bridge.generate_unique_nickname,
-        save_user_nickname=bridge.save_user_nickname,
-        clear_message_ids=bridge.clear_message_ids,
+        location_handler=actions.handle_location_step,
+        send_welcome=actions.send_welcome,
+        get_user_hash=actions.get_user_hash,
+        get_user_nickname=actions.get_user_nickname,
+        generate_unique_nickname=actions.generate_unique_nickname,
+        save_user_nickname=actions.save_user_nickname,
+        clear_message_ids=actions.clear_message_ids,
     )
 
 

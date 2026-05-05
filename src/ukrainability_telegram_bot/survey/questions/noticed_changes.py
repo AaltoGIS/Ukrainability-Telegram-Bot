@@ -19,7 +19,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 DETAIL_REQUIRING_INDICES = frozenset({0, 1})
@@ -34,13 +34,14 @@ class NoticedChangesCallbacks:
     get_anonymous_id: Callable[[int], str]
 
 
-def callbacks_from_bridge(bridge: Any) -> NoticedChangesCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> NoticedChangesCallbacks:
+    actions = resolve_actions(ctx, actions)
     return NoticedChangesCallbacks(
-        ask_changes_detail=bridge.ask_changes_detail,
-        ask_wishlist=bridge.ask_wishlist,
-        ask_final_confirmation=bridge.ask_final_confirmation,
-        clear_dependent_fields=bridge.clear_dependent_fields,
-        get_anonymous_id=bridge.get_anonymous_id,
+        ask_changes_detail=actions.ask_changes_detail,
+        ask_wishlist=actions.ask_wishlist,
+        ask_final_confirmation=actions.ask_final_confirmation,
+        clear_dependent_fields=actions.clear_dependent_fields,
+        get_anonymous_id=actions.get_anonymous_id,
     )
 
 

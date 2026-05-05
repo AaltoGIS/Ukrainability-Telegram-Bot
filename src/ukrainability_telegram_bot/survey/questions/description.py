@@ -20,13 +20,14 @@ from ...telegram_io import (
     telegram_retry_after,
 )
 from ...voice import new_voice_filename, safe_nickname_directory
-from .base import DescriptionCallbacks
+from .base import DescriptionCallbacks, resolve_actions
 
 
-def callbacks_from_bridge(bridge: Any) -> DescriptionCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> DescriptionCallbacks:
+    actions = resolve_actions(ctx, actions)
     return DescriptionCallbacks(
-        ask_final_confirmation=bridge.ask_final_confirmation,
-        description_handler=bridge.handle_description,
+        ask_final_confirmation=actions.ask_final_confirmation,
+        description_handler=actions.handle_description,
     )
 
 

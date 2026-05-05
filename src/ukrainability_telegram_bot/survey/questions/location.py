@@ -11,6 +11,7 @@ from telebot import types
 from ...app import AppContext
 from ...messages import messages
 from ...telegram_io import redacted_coordinate, safe_send_message, send_next_step_prompt
+from .base import resolve_actions
 
 
 @dataclass(frozen=True)
@@ -21,12 +22,13 @@ class LocationCallbacks:
     location_handler: Callable[..., Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> LocationCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> LocationCallbacks:
+    actions = resolve_actions(ctx, actions)
     return LocationCallbacks(
-        update_activity_timestamp=bridge.update_activity_timestamp,
-        send_welcome=bridge.send_welcome,
-        ask_purpose_visit=bridge.ask_purpose_visit,
-        location_handler=bridge.handle_location_step,
+        update_activity_timestamp=actions.update_activity_timestamp,
+        send_welcome=actions.send_welcome,
+        ask_purpose_visit=actions.ask_purpose_visit,
+        location_handler=actions.handle_location_step,
     )
 
 

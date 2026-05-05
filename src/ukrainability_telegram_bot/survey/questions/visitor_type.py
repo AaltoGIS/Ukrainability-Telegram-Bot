@@ -20,7 +20,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 @dataclass(frozen=True)
@@ -29,10 +29,11 @@ class VisitorTypeCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> VisitorTypeCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> VisitorTypeCallbacks:
+    actions = resolve_actions(ctx, actions)
     return VisitorTypeCallbacks(
-        ask_duration=bridge.ask_duration,
-        ask_final_confirmation=bridge.ask_final_confirmation,
+        ask_duration=actions.ask_duration,
+        ask_final_confirmation=actions.ask_final_confirmation,
     )
 
 

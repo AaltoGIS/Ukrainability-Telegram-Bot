@@ -19,7 +19,7 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import register
+from .base import register, resolve_actions
 
 
 @dataclass(frozen=True)
@@ -32,14 +32,15 @@ class DemographicsCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
 
 
-def callbacks_from_bridge(bridge: Any) -> DemographicsCallbacks:
+def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> DemographicsCallbacks:
+    actions = resolve_actions(ctx, actions)
     return DemographicsCallbacks(
-        ask_gender=bridge.ask_gender,
-        ask_occupation=bridge.ask_occupation,
-        ask_income=bridge.ask_income,
-        ask_kremenchuk=bridge.ask_kremenchuk,
-        ask_description=bridge.ask_description,
-        ask_final_confirmation=bridge.ask_final_confirmation,
+        ask_gender=actions.ask_gender,
+        ask_occupation=actions.ask_occupation,
+        ask_income=actions.ask_income,
+        ask_kremenchuk=actions.ask_kremenchuk,
+        ask_description=actions.ask_description,
+        ask_final_confirmation=actions.ask_final_confirmation,
     )
 
 

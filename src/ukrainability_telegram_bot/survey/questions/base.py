@@ -30,6 +30,15 @@ def register(name: str) -> Callable[[type[Question]], type[Question]]:
     return decorator
 
 
+def resolve_actions(ctx: AppContext, actions: Any | None = None) -> Any:
+    if actions is not None:
+        return actions
+
+    from ..actions import SurveyActions
+
+    return SurveyActions(ctx)
+
+
 @dataclass(frozen=True)
 class ConsentCallbacks:
     location_handler: Callable[..., Any]
