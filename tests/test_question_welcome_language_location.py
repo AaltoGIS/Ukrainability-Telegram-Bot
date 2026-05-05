@@ -110,6 +110,31 @@ def test_send_welcome_returning_user_with_consent_true_sends_continue(app_contex
     assert keyboard.keyboard[0][0].callback_data == "post_consent_continue"
 
 
+def test_send_welcome_returning_user_with_consent_false_flips_and_sends_continue(app_context):
+    app_context.sessions.set_profile(123, "language", "en")
+    app_context.sessions.set_profile(123, "consent", False)
+    callbacks = welcome.WelcomeCallbacks(
+        update_activity_timestamp=MagicMock(),
+        get_user_hash=MagicMock(return_value="user-hash"),
+        get_user_nickname=MagicMock(return_value="SafeNick1"),
+        generate_unique_nickname=MagicMock(),
+        save_user_nickname=MagicMock(),
+        send_welcome=MagicMock(),
+    )
+
+    welcome.send_welcome(
+        app_context,
+        callbacks=callbacks,
+        message=_text_message("/start"),
+    )
+
+    assert app_context.sessions.get_profile(123, "consent") is True
+    send_call = app_context.bot.send_message.call_args
+    assert "<b>SafeNick1</b>" in send_call.args[1]
+    keyboard = send_call.kwargs["reply_markup"]
+    assert keyboard.keyboard[0][0].callback_data == "post_consent_continue"
+
+
 def test_language_selection_sets_language_and_sends_consent_prompt(app_context):
     callbacks = language.LanguageCallbacks(location_handler=MagicMock())
 
