@@ -264,9 +264,6 @@ Build the package:
 python3 -m build
 ```
 
-Publishing to PyPI is a separate maintainer action requiring PyPI credentials;
-this repository only prepares the package for building and publishing.
-
 ## Maintainers
 
 - Oleksandr Karasov, GIST Lab, Aalto University
