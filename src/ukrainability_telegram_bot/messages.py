@@ -164,6 +164,15 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'accessibility_custom_instruction': (
             "You can also type your own mode of travel as a text message. When finished, press Done."
         ),
+        'changes_detail_custom_instruction': (
+            "You can also type additional changes here as a text message. When finished, press Done."
+        ),
+        'wishlist_custom_instruction': (
+            "You can also type your own suggestion as a text message. When finished, press Done."
+        ),
+        'kremenchuk_custom_instruction': (
+            "You can also type your own response as a text message. When finished, press Done."
+        ),
         'labels': {
             'location': 'Location',
             'enjoyment': 'Enjoyment',
@@ -410,6 +419,15 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
         ),
         'accessibility_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
+        'changes_detail_custom_instruction': (
+            "Ви також можете ввести додаткові зміни як текстове повідомлення. Коли закінчите, натисніть Готово."
+        ),
+        'wishlist_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
+        'kremenchuk_custom_instruction': (
             "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
         ),
         'labels': {

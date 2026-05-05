@@ -29,19 +29,29 @@ from .survey.persistence import (
 from .survey.questions import consent as consent_question
 from .survey.questions import description as description_question
 from .survey.questions import accessibility as accessibility_question
+from .survey.questions import changes_detail as changes_detail_question
 from .survey.questions import duration as duration_question
 from .survey.questions import enjoyment as enjoyment_question
+from .survey.questions import frequency as frequency_question
+from .survey.questions import kremenchuk as kremenchuk_question
 from .survey.questions import language as language_question
 from .survey.questions import location as location_question
+from .survey.questions import noticed_changes as noticed_changes_question
 from .survey.questions import purpose as purpose_question
 from .survey.questions import regularity as regularity_question
 from .survey.questions import visitor_type as visitor_type_question
 from .survey.questions import welcome as welcome_question
+from .survey.questions import wishlist as wishlist_question
 from .survey.questions.accessibility import AccessibilityCallbacks
+from .survey.questions.changes_detail import ChangesDetailCallbacks
 from .survey.questions.duration import DurationCallbacks
 from .survey.questions.enjoyment import EnjoymentCallbacks
+from .survey.questions.frequency import FrequencyCallbacks
+from .survey.questions.kremenchuk import KremenchukCallbacks
+from .survey.questions.noticed_changes import NoticedChangesCallbacks
 from .survey.questions.regularity import RegularityCallbacks
 from .survey.questions.visitor_type import VisitorTypeCallbacks
+from .survey.questions.wishlist import WishlistCallbacks
 from .survey.questions.base import (
     ConsentCallbacks,
     DescriptionCallbacks,
@@ -785,716 +795,96 @@ def confirm_regularity(call):
 
 
 def ask_frequency_change(chat_id, user_id, language):
-    """
-    Asks if user's visit frequency has changed compared to previous years.
-    Second question in the dependent chain, follows regularity.
-    """
-    try:
-        # Remove flow logging for normal flow
-        _user_data()[user_id]['frequency_change'] = ''
-        _user_data()[user_id]['current_question'] = 'frequency_change'
-        options = messages[language]['options']['frequency_change']
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"frequency_change_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        inline_kb.add(*buttons)
-
-        bot.send_message(
-            chat_id,
-            messages[language]['frequency_change_question'],
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_frequency_change: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    frequency_question.ask_frequency_change(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(
     func=lambda call: call.data.startswith('frequency_change_'))
 def handle_frequency_change_selection(call):
-    """
-    Handles user selection for frequency change question.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        anon_id = get_anonymous_id(user_id)
-
-        options = messages[language]['options']['frequency_change']
-        try:
-            idx = callback_index(call.data, "frequency_change", options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-            return
-
-        selected_frequency_change = options[idx]
-        previous_freq_change = _user_data()[user_id].get('frequency_change', '')
-
-        # Only log if this is a modification
-        if _user_data()[user_id].get(
-                'modifying') and previous_freq_change != selected_frequency_change:
-            flow_logger.info(
-                f"User {anon_id}: Modified frequency_change from '{previous_freq_change}' to '{selected_frequency_change}'")
-
-        # Save the new selection
-        _user_data()[user_id]['frequency_change'] = selected_frequency_change
-
-        # Remove current question marker
-        _user_data()[user_id].pop('current_question', None)
-
-        # Notify user of selection
-        bot.answer_callback_query(
-            call.id, f"{messages[language]['selected']} {selected_frequency_change}")
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=None)
-        bot.send_message(
-            chat_id,
-            f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_frequency_change)}</i>",
-            parse_mode='HTML')
-
-        # Check for "didn't visit before invasion" option
-        didnt_visit_options = [
-            "I didn't visit this place before the invasion",
-            "Не відвідував(ла) це місце до вторгнення"
-        ]
-
-        # Clear dependent fields if appropriate
-        if previous_freq_change != selected_frequency_change:
-            clear_dependent_fields(
-                user_id,
-                'frequency_change',
-                previous_freq_change,
-                selected_frequency_change)
-
-        # Special handling for "didn't visit before" responses
-        if selected_frequency_change in didnt_visit_options:
-            # Set a consistent value for noticed_changes for data integrity
-            _user_data()[user_id]['noticed_changes'] = selected_frequency_change
-
-        # Determine next question based on modification state
-        if _user_data()[user_id].get('modifying'):
-            if selected_frequency_change in didnt_visit_options:
-                # Skip noticed_changes and go to final confirmation
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # If noticed_changes not already answered or we're directly
-                # modifying frequency_change, proceed to ask it.
-                ask_noticed_changes(chat_id, user_id, language)
-        else:
-            # Normal flow if not modifying
-            if selected_frequency_change in didnt_visit_options:
-                # Skip to wishlist question
-                ask_wishlist(chat_id, user_id, language)
-            else:
-                ask_noticed_changes(chat_id, user_id, language)
-    except Exception as e:
-        logging.exception(f"Error in handle_frequency_change_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
-
-
+    frequency_question.handle_frequency_change_selection(
+        _ctx(),
+        call,
+        FrequencyCallbacks(
+            ask_noticed_changes=ask_noticed_changes,
+            ask_wishlist=ask_wishlist,
+            ask_final_confirmation=ask_final_confirmation,
+            clear_dependent_fields=clear_dependent_fields,
+            get_anonymous_id=get_anonymous_id,
+        ),
+    )
 
 
 # Noticed changes and changes details handlers
 def ask_noticed_changes(chat_id, user_id, language):
-    """
-    Asks if the user has noticed any changes since the full-scale invasion.
-    """
-    try:
-        # Reset noticed_changes data
-        _user_data()[user_id]['noticed_changes'] = ''
-        _user_data()[user_id]['current_question'] = 'noticed_changes'
-
-        options = messages[language]['options']['noticed_changes']
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"noticed_changes_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        inline_kb.add(*buttons)
-
-        # Use the question text directly
-        question_text = messages[language]['changes_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_noticed_changes: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    noticed_changes_question.ask_noticed_changes(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(
     func=lambda call: call.data.startswith('noticed_changes_'))
 def handle_noticed_changes_selection(call):
-    """
-    Handles user selection for noticed changes question.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        options = messages[language]['options']['noticed_changes']
-        try:
-            idx = callback_index(call.data, "noticed_changes", options)
-        except (ValueError, IndexError):
-            safe_answer_callback(
-                call, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-            return
-
-        selected_change = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_noticed_changes'] = selected_change
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"noticed_changes_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_noticed_changes"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(
-                    f"Error in handle_noticed_changes_selection: {e}")
-
-        # Replace direct call with safe_answer_callback
-        safe_answer_callback(
-            call, f"{messages[language]['selected']} {selected_change}")
-    except Exception as e:
-        logging.exception(f"Error in handle_noticed_changes_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    noticed_changes_question.handle_noticed_changes_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data ==
                             "confirm_noticed_changes")
 def confirm_noticed_changes(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        anon_id = get_anonymous_id(user_id)
-
-        # Transfer from temp storage to actual storage
-        if 'temp_noticed_changes' in _user_data()[user_id]:
-            selected_change = _user_data()[user_id]['temp_noticed_changes']
-            previous_change = _user_data()[user_id].get('noticed_changes', '')
-
-            # Log if it's a modification
-            if _user_data()[user_id].get(
-                    'modifying') and previous_change != selected_change:
-                flow_logger.info(
-                    f"User {anon_id}: Modified noticed changes from '{previous_change}' to '{selected_change}'")
-
-            # Save the new selection
-            _user_data()[user_id]['noticed_changes'] = selected_change
-            _user_profiles().setdefault(
-                user_id, {})['noticed_changes'] = selected_change
-            _user_data()[user_id].pop('temp_noticed_changes')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Clear dependent fields if appropriate
-            if previous_change != selected_change:
-                cleared_fields = clear_dependent_fields(
-                    user_id, 'noticed_changes', previous_change, selected_change)
-                if cleared_fields:
-                    flow_logger.info(
-                        f"User {anon_id}: Cleared fields due to noticed_changes change: {cleared_fields}")
-
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_change)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if this option requires change details
-            detail_requiring_options = [
-                "Yes, positive changes",
-                "Yes, negative changes",
-                "Так, позитивні зміни",
-                "Так, негативні зміни"]
-
-            if selected_change in detail_requiring_options:
-                flow_logger.info(
-                    f"User {anon_id}: Selected positive/negative changes, asking for details")
-                ask_changes_detail(chat_id, user_id, language)
-            else:
-                if _user_data()[user_id].get('modifying'):
-                    _user_data()[user_id].pop('modifying')
-                    _user_data()[user_id].pop('modifying_field', None)
-                    flow_logger.info(
-                        f"User {anon_id}: No notable changes while modifying, returning to final confirmation")
-                    ask_final_confirmation(chat_id, user_id, language)
-                else:
-                    # Skip directly to wishlist before socioeconomic questions
-                    flow_logger.info(
-                        f"User {anon_id}: No notable changes, skipping to wishlist")
-                    ask_wishlist(chat_id, user_id, language)
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_noticed_changes: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    noticed_changes_question.confirm_noticed_changes(
+        _ctx(),
+        call,
+        NoticedChangesCallbacks(
+            ask_changes_detail=ask_changes_detail,
+            ask_wishlist=ask_wishlist,
+            ask_final_confirmation=ask_final_confirmation,
+            clear_dependent_fields=clear_dependent_fields,
+            get_anonymous_id=get_anonymous_id,
+        ),
+    )
 
 
 def ask_changes_detail(chat_id, user_id, language):
-    """
-    Asks for details about the changes noticed since the invasion.
-    Fourth and final question in the dependent chain.
-    Only asked if user reported positive or negative changes.
-
-    Args:
-        chat_id (int): Telegram chat ID
-        user_id (int): User identifier
-        language (str): User's language preference
-    """
-    try:
-        anon_id = get_anonymous_id(user_id)
-        flow_logger.info(f"User {anon_id}: Asking changes_detail question")
-
-        _user_data()[user_id]['changes_detail'] = []
-        _user_data()[user_id]['custom_changes'] = []
-        _user_data()[user_id]['awaiting_multiple_select'] = 'changes_detail'
-
-        # Remove the 'Other' option
-        options = messages[language]['options']['changes_detail'][:-1]
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"changes_detail_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        # Add Done button by default for better UX with free text input
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="changes_detail_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['changes_detail_question']}\n\n"
-            f"{'You can also type additional changes here as a text message. ' if language=='en' else 'Ви також можете ввести додаткові зміни як текстове повідомлення. '}"
-            f"{'When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.'}")
-
-        bot.send_message(
-            chat_id,
-            instruction_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_changes_detail: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    changes_detail_question.ask_changes_detail(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(
     func=lambda call: call.data.startswith('changes_detail_'))
 def handle_changes_detail_selection(call):
-    """
-    Handles user selections for changes detail question.
-    Multiple selections are allowed for this question.
-
-    Flow logic:
-    1. When "Done" is pressed and modifying: Return to final confirmation
-    2. When "Done" is pressed and first time: Proceed to wishlist
-    3. Otherwise toggle selection of options
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        anon_id = get_anonymous_id(user_id)
-
-        # Remove the 'Other' option
-        options = messages[language]['options']['changes_detail'][:-1]
-        data = callback_suffix(call.data, "changes_detail")
-
-        if data == 'done':
-            if not _user_data()[user_id]['changes_detail'] and not _user_data()[user_id].get(
-                    'custom_changes', []):
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None
-            )
-
-            # Combine selected options and custom inputs
-            all_changes = _user_data()[user_id]['changes_detail'] + \
-                _user_data()[user_id].get('custom_changes', [])
-            changes = '; '.join(escape_html(change) for change in all_changes)
-
-            # Log the final selection with anonymous ID
-            flow_logger.info(
-                f"User {anon_id}: Completed changes_detail with selections: {all_changes}")
-
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{changes}</i>",
-                parse_mode='HTML')
-
-            # Clear awaiting_multiple_select
-            _user_data()[user_id].pop('awaiting_multiple_select', None)
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if we're in modification mode
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-                flow_logger.info(
-                    f"User {anon_id}: In modification flow, returning to final confirmation")
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Proceed to wishlist question before socioeconomic questions
-                flow_logger.info(
-                    f"User {anon_id}: Proceeding to wishlist question")
-                ask_wishlist(chat_id, user_id, language)
-        else:
-            try:
-                idx = callback_index(call.data, "changes_detail", options)
-            except (ValueError, IndexError):
-                safe_answer_callback(
-                    call, messages[language].get(
-                        'invalid_selection', "Invalid selection."))
-                return
-
-            selected_option = options[idx]
-
-            # Toggle selection
-            if selected_option in _user_data()[user_id]['changes_detail']:
-                _user_data()[user_id]['changes_detail'].remove(selected_option)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['unselected']} {selected_option}")
-                flow_logger.info(
-                    f"User {anon_id}: Unselected changes_detail option: {selected_option}")
-            else:
-                _user_data()[user_id]['changes_detail'].append(selected_option)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['selected']} {selected_option}")
-                flow_logger.info(
-                    f"User {anon_id}: Selected changes_detail option: {selected_option}")
-
-            update_changes_detail_selection_keyboard(
-                call.message, user_id, language)
-    except Exception as e:
-        logging.exception(f"Error in handle_changes_detail_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    changes_detail_question.handle_changes_detail_selection(
+        _ctx(),
+        call,
+        ChangesDetailCallbacks(
+            ask_wishlist=ask_wishlist,
+            ask_final_confirmation=ask_final_confirmation,
+            get_anonymous_id=get_anonymous_id,
+        ),
+    )
 
 
 def update_changes_detail_selection_keyboard(message, user_id, language):
-    """
-    Updates the keyboard for changes detail selection to reflect current choices.
-
-    Args:
-        message (telebot.types.Message): The message containing the keyboard
-        user_id (int): User identifier
-        language (str): User's language preference
-    """
-    try:
-        # Remove the 'Other' option
-        options = messages[language]['options']['changes_detail'][:-1]
-        selected_options = _user_data()[user_id]['changes_detail']
-        custom_changes = _user_data()[user_id].get('custom_changes', [])
-
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = []
-        for idx, option in enumerate(options):
-            if option in selected_options:
-                button_text = f"✅ {option}"
-            else:
-                button_text = option
-            callback_data = f"changes_detail_{idx}"
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data))
-
-        # Only add the Done button if at least one selection has been made
-        if selected_options or custom_changes:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="changes_detail_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=inline_kb)
-        except telebot.apihelper.ApiTelegramException as e:
-            if "message is not modified" not in str(e):
-                # For other exceptions, log and notify the user
-                logging.exception(
-                    f"Error in update_changes_detail_selection_keyboard: {e}")
-    except Exception as e:
-        logging.exception(
-            f"Error in update_changes_detail_selection_keyboard: {e}")
-        bot.send_message(
-            message.chat.id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
-
+    changes_detail_question.update_changes_detail_selection_keyboard(
+        _ctx(), message, user_id, language
+    )
 
 
 # Wishlist handler modifications
 def ask_wishlist(chat_id, user_id, language):
-    """
-    Asks the user about desired improvements to the place.
-    This question follows after the dependent question chain.
-    """
-    try:
-        anon_id = get_anonymous_id(user_id)
-        flow_logger.info(f"User {anon_id}: Asking wishlist question")
-
-        # Clear old values if any
-        _user_data()[user_id]['wishlist'] = []
-        _user_data()[user_id]['custom_wishlist'] = []
-        _user_data()[user_id]['awaiting_multiple_select'] = 'wishlist'
-
-        # Fixed: Include all options except the second-to-last one (which is
-        # "Other")
-        all_options = messages[language]['options']['wishlist']
-        # Get all options except the last one (Other)
-        options = all_options[:-1]
-
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = [
-            types.InlineKeyboardButton(
-                text=option,
-                callback_data=f"wishlist_{idx}") for idx,
-            option in enumerate(options)]
-        # Add Done button by default for better UX with free text input
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="wishlist_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['wishlist_question']}\n\n"
-            f"{'You can also type your own suggestion as a text message. ' if language=='en' else 'Ви також можете ввести власний варіант у полі введення тексту. '}"
-            f"{'When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.'}")
-
-        bot.send_message(chat_id, instruction_text, reply_markup=inline_kb)
-    except Exception as e:
-        logging.exception(f"Error in ask_wishlist: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    wishlist_question.ask_wishlist(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('wishlist_'))
 def handle_wishlist_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        data = callback_suffix(call.data, "wishlist")
-
-        # Use the same options list as in ask_wishlist
-        all_options = messages[language]['options']['wishlist']
-        # Get all options except the last one (Other)
-        options = all_options[:-1]
-
-        if data == 'done':
-            if not _user_data()[user_id]['wishlist'] and not _user_data()[user_id].get(
-                    'custom_wishlist', []):
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Combine selected options and custom inputs
-            all_wishlist = _user_data()[user_id]['wishlist'] + \
-                _user_data()[user_id].get('custom_wishlist', [])
-            selected = '; '.join(all_wishlist)
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected)}</i>",
-                parse_mode='HTML')
-
-            # Clear awaiting_multiple_select
-            _user_data()[user_id].pop('awaiting_multiple_select', None)
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Proceed to socioeconomic questions
-                ask_age(chat_id, user_id, language)
-        else:
-            try:
-                idx = callback_index(call.data, "wishlist", options)
-            except (ValueError, IndexError):
-                safe_answer_callback(
-                    call, messages[language]['invalid_selection'])
-                return
-
-            choice = options[idx]
-
-            # Toggle selection
-            if choice in _user_data()[user_id]['wishlist']:
-                _user_data()[user_id]['wishlist'].remove(choice)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['unselected']} {choice}")
-            else:
-                _user_data()[user_id]['wishlist'].append(choice)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['selected']} {choice}")
-
-            update_wishlist_keyboard(call.message, user_id, language, options)
-    except Exception as e:
-        logging.exception(f"Error in handle_wishlist_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    wishlist_question.handle_wishlist_selection(
+        _ctx(),
+        call,
+        WishlistCallbacks(
+            ask_age=ask_age,
+            ask_final_confirmation=ask_final_confirmation,
+            get_anonymous_id=get_anonymous_id,
+        ),
+    )
 
 
 def update_wishlist_keyboard(message, user_id, language, options):
-    try:
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        selected_options = _user_data()[user_id]['wishlist']
-        custom_wishlist = _user_data()[user_id].get('custom_wishlist', [])
-
-        buttons = []
-        for idx, option in enumerate(options):
-            button_text = f"✅ {option}" if option in selected_options else option
-            callback_data = f"wishlist_{idx}"
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data))
-
-        # Only add the Done button if at least one selection has been made
-        if selected_options or custom_wishlist:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="wishlist_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=inline_kb)
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in update_wishlist_keyboard: {e}")
-    except Exception as e:
-        logging.exception(f"Error in update_wishlist_keyboard: {e}")
+    wishlist_question.update_wishlist_keyboard(_ctx(), message, user_id, language, options)
 
 
 
@@ -2120,173 +1510,25 @@ def confirm_income(call):
 
 # Kremenchuk handler modifications
 def ask_kremenchuk(chat_id, user_id, language):
-    try:
-        _user_data()[user_id]['kremenchuk'] = ''
-        _user_data()[user_id]['custom_kremenchuk'] = []
-        _user_data()[user_id]['awaiting_multiple_select'] = 'kremenchuk'
-
-        # Remove the 'Other' option but keep "Prefer not to disclose"
-        options = messages[language]['options']['kremenchuk'][:-
-                                                              2] + messages[language]['options']['kremenchuk'][-1:]
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"kremenchuk_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        # Add Done button by default for better UX with free text input
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="kremenchuk_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['kremenchuk_question']}\n\n"
-            f"{'You can also type your own response as a text message. ' if language=='en' else 'Ви також можете ввести власний варіант у полі введення тексту. '}"
-            f"{'When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.'}")
-
-        bot.send_message(
-            chat_id,
-            instruction_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_kremenchuk: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    kremenchuk_question.ask_kremenchuk(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('kremenchuk_'))
 def handle_kremenchuk_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        data = callback_suffix(call.data, "kremenchuk")
-        options = messages[language]['options']['kremenchuk'][:- \
-            2] + messages[language]['options']['kremenchuk'][-1:]
-
-        if data == 'done':
-            if not _user_data()[user_id]['kremenchuk'] and not _user_data()[user_id].get(
-                    'custom_kremenchuk', []):
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Combine kremenchuk and custom_kremenchuk for display
-            kremenchuk_value = _user_data()[user_id]['kremenchuk']
-            custom_values = _user_data()[user_id].get('custom_kremenchuk', [])
-
-            all_values = []
-            if kremenchuk_value:
-                all_values.append(kremenchuk_value)
-            all_values.extend(custom_values)
-
-            selected_text = '; '.join(all_values)
-
-            # Save to _user_profiles()
-            if kremenchuk_value:
-                _user_profiles().setdefault(
-                    user_id, {})['kremenchuk'] = kremenchuk_value
-
-            # Show user's selections
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_text)}</i>",
-                parse_mode='HTML')
-
-            # Clear awaiting_multiple_select state
-            _user_data()[user_id].pop('awaiting_multiple_select', None)
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if we're in modifying mode
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Move on to description
-                ask_description(chat_id, user_id, language)
-
-        else:
-            try:
-                idx = callback_index(call.data, "kremenchuk", options)
-            except (ValueError, IndexError):
-                safe_answer_callback(
-                    call, messages[language].get(
-                        'invalid_selection', "Invalid selection."))
-                return
-
-            selected_kremenchuk = options[idx]
-
-            # Set the selection
-            _user_data()[user_id]['kremenchuk'] = selected_kremenchuk
-
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {selected_kremenchuk}")
-
-            # Update the keyboard to show selection
-            update_kremenchuk_keyboard(call.message, user_id, language, options)
-    except Exception as e:
-        logging.exception(f"Error in handle_kremenchuk_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    kremenchuk_question.handle_kremenchuk_selection(
+        _ctx(),
+        call,
+        KremenchukCallbacks(
+            ask_description=ask_description,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 def update_kremenchuk_keyboard(message, user_id, language, options):
-    try:
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        selected_option = _user_data()[user_id].get('kremenchuk', '')
-        custom_kremenchuk = _user_data()[user_id].get('custom_kremenchuk', [])
-
-        buttons = []
-        for idx, option in enumerate(options):
-            button_text = f"✅ {option}" if option == selected_option else option
-            callback_data = f"kremenchuk_{idx}"
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data))
-
-        # Only add the Done button if at least one selection has been made
-        if selected_option or custom_kremenchuk:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="kremenchuk_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=inline_kb)
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in update_kremenchuk_keyboard: {e}")
-    except Exception as e:
-        logging.exception(f"Error in update_kremenchuk_keyboard: {e}")
+    kremenchuk_question.update_kremenchuk_keyboard(
+        _ctx(), message, user_id, language, options
+    )
 
 
 
