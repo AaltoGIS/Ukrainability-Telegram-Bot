@@ -18,3 +18,4 @@ flow_control.log
 *.db-wal
 voice_messages/
 *.enc
+.coverage
