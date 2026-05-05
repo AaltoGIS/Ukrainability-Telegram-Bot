@@ -26,6 +26,17 @@ def test_build_fernet_decrypts_with_retiring_key():
     assert decrypt_text(rotated_fernet, encrypted_with_old_key) == "historical response"
 
 
+def test_multifernet_encrypts_and_decrypts_voice_bytes():
+    key = fernet_module.Fernet.generate_key().decode()
+    fernet = build_fernet(key)
+    payload = b"telegram voice bytes"
+
+    encrypted = fernet.encrypt(payload)
+
+    assert encrypted != payload
+    assert fernet.decrypt(encrypted) == payload
+
+
 def test_build_fernet_rejects_invalid_key():
     with pytest.raises(ValueError, match="Invalid encryption key"):
         build_fernet("not-a-fernet-key")

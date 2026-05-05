@@ -1,3 +1,5 @@
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -44,3 +46,21 @@ def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp
         with bot.user_data_lock:
             bot.user_data.pop(user_id, None)
             bot.user_profiles.pop(user_id, None)
+
+
+def test_cleanup_scheduler_waits_before_first_cleanup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "cleanup_interval_seconds", 0.05)
+    monkeypatch.setattr(bot, "cleanup_stale_sessions", lambda hours_inactive: calls.append("sessions"))
+    monkeypatch.setattr(bot, "cleanup_old_voice_messages", lambda days_to_keep: calls.append("voice"))
+
+    bot.cleanup_stop_event.clear()
+    thread = threading.Thread(target=bot.cleanup_scheduler)
+    thread.start()
+    try:
+        time.sleep(0.01)
+        assert calls == []
+    finally:
+        bot.cleanup_stop_event.set()
+        thread.join(timeout=1)
+        bot.cleanup_stop_event.clear()

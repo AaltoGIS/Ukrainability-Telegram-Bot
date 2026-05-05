@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, MutableMapping, Optional
@@ -15,6 +16,7 @@ except ImportError:  # pragma: no cover - dependency is installed in normal use
 
 DEFAULT_STORAGE_DIR = "/home/ubuntu/kremenchuk"
 DEFAULT_CREDENTIALS_FILE = "/home/ubuntu/kremenchuk/secure/credentials"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -122,13 +124,20 @@ def _read_export_file(path: Path) -> Mapping[str, str]:
         if "=" not in key_value:
             continue
         key, value = key_value.split("=", 1)
-        values[key.strip()] = value.strip().strip("\"'")
+        stripped_value = value.strip()
+        if _has_unbalanced_quotes(stripped_value):
+            logger.warning("Credentials value for %s contains unbalanced quotes", key.strip())
+        values[key.strip()] = stripped_value.strip("\"'")
 
     return values
 
 
 def _split_keys(value: str) -> tuple[str, ...]:
     return tuple(key.strip() for key in value.split(",") if key.strip())
+
+
+def _has_unbalanced_quotes(value: str) -> bool:
+    return value.count('"') % 2 == 1 or value.count("'") % 2 == 1
 
 
 def _int_env(env: Mapping[str, str], key: str, default: int) -> int:

@@ -501,7 +501,7 @@ def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_ret
                 flow_logger.error(f"Failed to send message after {max_retries} attempts: {e}")
                 raise
         except Exception as e:
-            # For non-API errors, retry once quickly
+            # Non-Telegram exceptions are not rate limits; retry once quickly.
             if attempt == 0:
                 flow_logger.warning(f"Error sending message: {e}, retrying once")
                 time.sleep(1)
@@ -5070,7 +5070,8 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
         # Get user data with thread-safe access
         with user_data_lock:
             user_data_copy = copy.deepcopy(user_data.get(user_id, {}))
-            user_consent = user_profiles.get(user_id, {}).get('consent', False)
+            user_profile_copy = copy.deepcopy(user_profiles.get(user_id, {}))
+            user_consent = user_profile_copy.get('consent', False)
 
         if not user_consent:
             flow_logger.info("Consent denied; skipping response row insert")
@@ -5093,8 +5094,7 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
         # Ensure kremenchuk is loaded from profiles if needed
         kremenchuk_value = user_data_copy.get('kremenchuk', '')
         if not kremenchuk_value:
-            with user_profiles_lock:
-                kremenchuk_value = user_profiles.get(user_id, {}).get('kremenchuk', '')
+            kremenchuk_value = user_profile_copy.get('kremenchuk', '')
 
         # User consented. Create the data dictionary safely
         location_data = user_data_copy.get('location', {})
@@ -5345,12 +5345,12 @@ cleanup_stop_event = threading.Event()
 def cleanup_scheduler():
     """Periodically runs cleanup tasks in the background."""
     while not cleanup_stop_event.is_set():
+        if cleanup_stop_event.wait(cleanup_interval_seconds):
+            break
         try:
             # Run cleanup tasks
             cleanup_stale_sessions(hours_inactive=48)
             cleanup_old_voice_messages(days_to_keep=voice_retention_days)
-
-            cleanup_stop_event.wait(cleanup_interval_seconds)
         except Exception as e:
             flow_logger.exception(f"Error in cleanup scheduler: {e}")
             cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60))
@@ -5362,9 +5362,17 @@ cleanup_thread = None
 def start_cleanup_scheduler():
     global cleanup_thread
     if cleanup_thread is None or not cleanup_thread.is_alive():
+        cleanup_stop_event.clear()
         cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
         cleanup_thread.start()
     return cleanup_thread
+
+
+def stop_cleanup_scheduler(timeout=5):
+    """Signal the background cleanup thread to stop and wait briefly."""
+    cleanup_stop_event.set()
+    if cleanup_thread is not None and cleanup_thread.is_alive():
+        cleanup_thread.join(timeout=timeout)
 
 
 # Update the start_polling_with_retry function for better error handling

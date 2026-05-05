@@ -51,6 +51,26 @@ def test_config_loads_legacy_credentials_file(tmp_path):
     assert config.user_hash_salt == "legacy-salt"
 
 
+def test_config_warns_about_unbalanced_quotes_in_credentials_file(tmp_path, caplog):
+    credentials = tmp_path / "credentials"
+    credentials.write_text(
+        'export TELEGRAM_BOT_TOKEN="legacy-token\n'
+        "export ENCRYPTION_KEY='legacy-key'\n"
+        "export UKRAINABILITY_USER_HASH_SALT='legacy-salt'\n",
+        encoding="utf-8",
+    )
+
+    AppConfig.from_env(
+        {
+            "UKRAINABILITY_CREDENTIALS_FILE": str(credentials),
+            "UKRAINABILITY_STORAGE_DIR": str(tmp_path / "storage"),
+        },
+        load_dotenv_file=False,
+    )
+
+    assert "contains unbalanced quotes" in caplog.text
+
+
 def test_config_supports_key_rotation_list(tmp_path):
     env = {
         "TELEGRAM_BOT_TOKEN": "telegram-token",

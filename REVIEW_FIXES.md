@@ -27,6 +27,8 @@ modernization commit.
 - Skipped response-row insertion when consent is denied instead of writing a mostly empty row.
 - Registered next-step handlers by chat ID before sending prompts that expect a free-text/location/voice reply.
 - Audited HTML-mode sends in `bot.py` and escaped interpolated nicknames in addition to existing escaped user-response echoes.
+- Removed a redundant reentrant lock read in `save_data_and_restart()` by snapshotting profile data with the user data.
+- Added a warning for malformed legacy credentials values with unbalanced quotes.
 - Deleted the unused `state.py` helper and its tests so there is only one in-memory session system.
 - Removed leftover notebook `# In[...]` markers from the runtime module.
 
@@ -35,7 +37,9 @@ modernization commit.
 - Switched bot and flow logs to `RotatingFileHandler` with configurable size and backup count.
 - Added configurable encrypted voice-message retention and cleanup interval environment variables.
 - Replaced the hard-coded daily cleanup `time.sleep()` loop with a waitable cleanup event and configurable cadence.
+- Changed cleanup scheduling so a restart waits for the configured interval before the first cleanup pass, and added `stop_cleanup_scheduler()`.
 
 ## Remaining Review Items
 
 - The larger architecture split into `survey/flow.py`, `telegram_io.py`, and an app context remains future work.
+- Survey-flow integration tests around mocked Telegram callbacks remain future work; current coverage focuses on config/security/storage/runtime helpers.
