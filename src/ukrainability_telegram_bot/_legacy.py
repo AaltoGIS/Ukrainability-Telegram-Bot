@@ -17,6 +17,7 @@ import telebot
 from telebot import types
 
 from .messages import messages
+from . import nicknames as legacy_nicknames
 from .pseudonym import hash_user_id
 from . import runtime as runtime_module
 from .runtime import flow_logger
@@ -170,40 +171,8 @@ def hide_keyboard(*args, **kwargs):
 
 
 # Random nickname generation data
-adjectives = [
-    'Agile', 'Ancient', 'Angry', 'Brave', 'Bright', 'Calm', 'Charming',
-    'Clever', 'Cool', 'Courageous', 'Crazy', 'Creative', 'Cute', 'Daring',
-    'Delightful', 'Eager', 'Enchanting', 'Energetic', 'Fancy', 'Friendly',
-    'Funny', 'Gentle', 'Glorious', 'Graceful', 'Happy', 'Helpful', 'Honest',
-    'Hungry', 'Jolly', 'Kind', 'Lively', 'Lucky', 'Merry', 'Mighty',
-    'Mysterious', 'Nice', 'Nimble', 'Peaceful', 'Perfect', 'Playful',
-    'Proud', 'Quick', 'Quiet', 'Radiant', 'Rapid', 'Rich', 'Sharp', 'Shiny',
-    'Silent', 'Silly', 'Smart', 'Smiling', 'Smooth', 'Soft', 'Sparkling',
-    'Strong', 'Swift', 'Thoughtful', 'Tiny', 'Victorious', 'Warm', 'Wild',
-    'Wise', 'Witty', 'Zealous', 'Adventurous', 'Affectionate', 'Alert',
-    'Ambitious', 'Amused', 'Brilliant', 'Careful', 'Cheerful', 'Confident',
-    'Cooperative', 'Courageous', 'Determined', 'Diligent', 'Eager', 'Elated',
-    'Enthusiastic', 'Excited', 'Exuberant', 'Fair', 'Faithful', 'Fearless',
-    'Frank', 'Friendly', 'Funny', 'Generous', 'Gentle', 'Good', 'Happy',
-    'Hardworking', 'Helpful', 'Honest', 'Humorous', 'Imaginative',
-    'Intelligent', 'Joyful'
-]
-
-nouns = [
-    'Antelope', 'Badger', 'Bat', 'Bear', 'Beaver', 'Bee', 'Bird', 'Butterfly',
-    'Camel', 'Cat', 'Cheetah', 'Chicken', 'Chimpanzee', 'Cobra', 'Cougar',
-    'Cow', 'Coyote', 'Crab', 'Crocodile', 'Deer', 'Dog', 'Dolphin', 'Donkey',
-    'Duck', 'Eagle', 'Elephant', 'Falcon', 'Ferret', 'Fish', 'Fox', 'Frog',
-    'Giraffe', 'Goat', 'Goose', 'Gorilla', 'Hamster', 'Hawk', 'Hedgehog',
-    'Hippo', 'Horse', 'Hyena', 'Jaguar', 'Kangaroo', 'Koala', 'Leopard',
-    'Lion', 'Lizard', 'Llama', 'Lobster', 'Monkey', 'Moose', 'Mouse',
-    'Octopus', 'Ostrich', 'Otter', 'Owl', 'Panda', 'Panther', 'Parrot',
-    'Peacock', 'Penguin', 'Pig', 'Polar Bear', 'Rabbit', 'Raccoon', 'Rat',
-    'Raven', 'Reindeer', 'Rhinoceros', 'Seal', 'Shark', 'Sheep', 'Skunk',
-    'Sloth', 'Snake', 'Spider', 'Squirrel', 'Swan', 'Tiger', 'Turkey',
-    'Turtle', 'Walrus', 'Wasp', 'Weasel', 'Whale', 'Wolf', 'Wombat',
-    'Woodpecker', 'Yak', 'Zebra'
-]
+adjectives = legacy_nicknames.LEGACY_ADJECTIVES
+nouns = legacy_nicknames.LEGACY_NOUNS
 
 # URLs for privacy notices and participant information
 
@@ -435,10 +404,10 @@ def ensure_session_valid(call):
             # Cannot proceed without language
             try:
                 bot.answer_callback_query(
-                    call.id, "Please start again with /start")
+                    call.id, messages["en"]["start_again"])
                 bot.send_message(
                     chat_id,
-                    "Session expired. Please use /start to begin.\nСесія закінчилася. Будь ласка, використайте /start для початку.")
+                    messages["en"]["session_expired"])
             except Exception:
                 pass
             return False, 'en'
@@ -1221,48 +1190,47 @@ def handle_text_messages(m):
             if 'custom_purposes' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_purposes'] = []
             _user_data()[user_id]['custom_purposes'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         elif mode == 'changes_detail':
             if 'custom_changes' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_changes'] = []
             _user_data()[user_id]['custom_changes'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         elif mode == 'visitor_type':
             if 'custom_visitor_types' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_visitor_types'] = []
             _user_data()[user_id]['custom_visitor_types'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         elif mode == 'accessibility':
             if 'custom_accessibility' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_accessibility'] = []
             _user_data()[user_id]['custom_accessibility'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         elif mode == 'wishlist':
             if 'custom_wishlist' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_wishlist'] = []
             _user_data()[user_id]['custom_wishlist'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         elif mode == 'kremenchuk':
             if 'custom_kremenchuk' not in _user_data()[user_id]:
                 _user_data()[user_id]['custom_kremenchuk'] = []
             _user_data()[user_id]['custom_kremenchuk'].append(user_input)
-            ack_text = "✅ Your input has been noted. You can select more options, type more text, or press Done to continue." if language == 'en' else "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження."
+            ack_text = messages[language]['multiple_select_input_noted']
             bot.send_message(chat_id, ack_text)
 
         else:
             # Unknown multiple select mode
-            bot.send_message(chat_id, "Please make a selection from the available options." if language ==
-                             'en' else "Будь ласка, зробіть вибір із доступних варіантів.")
+            bot.send_message(chat_id, messages[language]['multiple_select_prompt'])
     else:
         # Outside multiple-select mode, handle single-select questions
         current_question = _user_data()[user_id].get('current_question')
@@ -1281,8 +1249,7 @@ def handle_text_messages(m):
             # Re-prompt user to select from options with a clearer message
             bot.send_message(
                 chat_id,
-                "Please select one of the options provided in the buttons below." if language == 'en' else
-                "Будь ласка, оберіть один із варіантів, запропонованих у кнопках нижче."
+                messages[language]['single_select_prompt']
             )
 
             # Re-send the appropriate question
@@ -1306,13 +1273,7 @@ def handle_text_messages(m):
                 ask_income(chat_id, user_id, language)
         else:
             # For unsolicited text messages, guide the user
-            help_text = (
-                "I'm not sure what you want to do. Please follow the instructions shown on screen. "
-                "If you're stuck, use /start to restart the survey."
-            ) if language == 'en' else (
-                "Я не впевнений, що ви хочете зробити. Будь ласка, слідуйте інструкціям, показаним на екрані. "
-                "Якщо ви застрягли, використовуйте /start для перезапуску опитування."
-            )
+            help_text = messages[language]['unsolicited_text_help']
             bot.send_message(chat_id, help_text)
 
 

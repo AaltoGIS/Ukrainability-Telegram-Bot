@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..messages import messages
+
 
 FIELD_ORDER = [
     "location",
@@ -27,6 +29,10 @@ QUESTION_DEPENDENCIES = {
     "noticed_changes": ["changes_detail"],
 }
 
+REGULARITY_SKIP_TO_WISHLIST_INDICES = frozenset({4, 5, 6})
+FREQUENCY_DID_NOT_VISIT_BEFORE_INDICES = frozenset({3})
+NOTICED_CHANGES_DETAIL_REQUIRING_INDICES = frozenset({0, 1})
+
 
 def get_question_dependencies() -> dict[str, list[str]]:
     return dict(QUESTION_DEPENDENCIES)
@@ -35,28 +41,26 @@ def get_question_dependencies() -> dict[str, list[str]]:
 def requires_follow_up(regularity_response: str) -> bool:
     if not regularity_response:
         return False
-    skip_options = [
-        "One-time visit",
-        "Разове відвідування",
-        "Visited before 2022 but not anymore",
-        "Відвідував(-ла) до 2022 р., але не зараз",
-        "Prefer not to disclose",
-        "Надаю перевагу не вказувати",
-    ]
-    return not any(option in regularity_response for option in skip_options)
+    option_idx = _option_index("regularity", regularity_response)
+    if option_idx is None:
+        return True
+    return option_idx not in REGULARITY_SKIP_TO_WISHLIST_INDICES
 
 
 def skips_changes_questions(frequency_response: str) -> bool:
-    return frequency_response in {
-        "I didn't visit this place before the invasion",
-        "Не відвідував(ла) це місце до вторгнення",
-    }
+    option_idx = _option_index("frequency_change", frequency_response)
+    return option_idx in FREQUENCY_DID_NOT_VISIT_BEFORE_INDICES
 
 
 def requires_changes_detail(changes_response: str) -> bool:
-    return changes_response in {
-        "Yes, positive changes",
-        "Yes, negative changes",
-        "Так, позитивні зміни",
-        "Так, негативні зміни",
-    }
+    option_idx = _option_index("noticed_changes", changes_response)
+    return option_idx in NOTICED_CHANGES_DETAIL_REQUIRING_INDICES
+
+
+def _option_index(option_key: str, response: str) -> int | None:
+    for language in ("en", "uk"):
+        try:
+            return messages[language]["options"][option_key].index(response)
+        except ValueError:
+            continue
+    return None

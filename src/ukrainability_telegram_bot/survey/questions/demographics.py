@@ -321,12 +321,11 @@ def _language_for_call(ctx: AppContext, call: Any) -> str | None:
         ctx.sessions.set_data(user_id, "language", profile_language)
         return profile_language
 
-    safe_answer_callback(ctx, call, "Please start again with /start")
+    safe_answer_callback(ctx, call, messages["en"]["start_again"])
     safe_send_message(
         ctx,
         chat_id,
-        "Session expired. Please use /start to begin.\n"
-        "Сесія закінчилася. Будь ласка, використайте /start для початку.",
+        messages["en"]["session_expired"],
     )
     return None
 

@@ -91,11 +91,7 @@ def ask_final_confirmation(
                 ctx.sessions.get_profile(user_id, "kremenchuk"),
             )
 
-        header_message = (
-            "Here's a summary of your responses. Please review them carefully:"
-            if language == "en"
-            else "Ось підсумок ваших відповідей. Будь ласка, уважно перегляньте їх:"
-        )
+        header_message = messages[language]["responses_summary_header"]
         safe_send_message(ctx, chat_id, header_message)
         time.sleep(0.5)
 
@@ -118,11 +114,7 @@ def ask_final_confirmation(
             ]
         )
 
-        confirmation_text = (
-            "Is this information correct? You can modify any response or confirm submission."
-            if language == "en"
-            else "Чи правильна ця інформація? Ви можете змінити будь-яку відповідь або підтвердити подання."
-        )
+        confirmation_text = messages[language]["responses_summary_question"]
         safe_send_message(ctx, chat_id, confirmation_text, reply_markup=inline_kb)
     except Exception as exc:
         logging.exception(f"Error in ask_final_confirmation: {exc}")
@@ -133,18 +125,16 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
     try:
         responses = ctx.sessions.get_data(user_id)
         label_mapping = messages[language]["labels"]
-        latitude_label = "Latitude" if language == "en" else "Широта"
-        longitude_label = "Longitude" if language == "en" else "Довгота"
-        skipped_text = "Skipped" if language == "en" else "Пропущено"
+        latitude_label = messages[language]["latitude_label"]
+        longitude_label = messages[language]["longitude_label"]
+        skipped_text = messages[language]["skipped_label"]
         voice_submitted_text = messages[language]["voice_message_submitted"]
         lines: list[str] = []
 
         for field in FIELD_ORDER:
             if field == "location" and "location" in responses:
                 loc = responses["location"]
-                loc_label = label_mapping.get(
-                    "location", "Location" if language == "en" else "Локація"
-                )
+                loc_label = label_mapping["location"]
                 if loc.get("venue_title"):
                     lines.append(
                         f"<b>{loc_label}:</b> "
@@ -163,7 +153,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_purposes", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping.get('purpose_visit', 'Purpose of visit')}:</b> "
+                    f"<b>{label_mapping['purpose_visit']}:</b> "
                     f"{escape_html(purposes)}"
                 )
             elif field == "visitor_type" and "visitor_type" in responses:
@@ -172,7 +162,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_visitor_types", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping.get('visitor_type', 'Type of visitors')}:</b> "
+                    f"<b>{label_mapping['visitor_type']}:</b> "
                     f"{escape_html(visitor_type)}"
                 )
             elif field == "accessibility" and "accessibility" in responses:
@@ -181,7 +171,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_accessibility", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping.get('accessibility', 'Accessibility')}:</b> "
+                    f"<b>{label_mapping['accessibility']}:</b> "
                     f"{escape_html(accessibility)}"
                 )
             elif field == "changes_detail" and "changes_detail" in responses:
@@ -190,7 +180,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_changes", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping.get('changes_detail', 'Changes detail')}:</b> "
+                    f"<b>{label_mapping['changes_detail']}:</b> "
                     f"{escape_html(changes)}"
                 )
             elif field == "wishlist" and "wishlist" in responses:
@@ -199,7 +189,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_wishlist", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping.get('wishlist', 'Improvements wished')}:</b> "
+                    f"<b>{label_mapping['wishlist']}:</b> "
                     f"{escape_html(wishlist)}"
                 )
             elif field == "kremenchuk" and (
@@ -211,11 +201,11 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                 )
                 if kremenchuk_text:
                     lines.append(
-                        f"<b>{label_mapping.get('kremenchuk', 'Time living in Kremenchuk')}:</b> "
+                        f"<b>{label_mapping['kremenchuk']}:</b> "
                         f"{escape_html(kremenchuk_text)}"
                     )
             elif field == "description":
-                label = label_mapping.get("description", "Description")
+                label = label_mapping["description"]
                 description_text = responses.get("description", "")
                 voice_submitted = responses.get("voice_submitted", "")
                 if voice_submitted:

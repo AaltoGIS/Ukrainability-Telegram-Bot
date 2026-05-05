@@ -62,6 +62,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 |---|---|
 | Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, `survey/flow.py`, `survey/persistence.py`, and `survey/questions/` modules for welcome, language, location, consent, purpose, description, enjoyment, visitor type, duration, accessibility, regularity, frequency change, noticed changes, changes detail, wishlist, Kremenchuk residency, demographics, final confirmation/modification, and post-submission restart/continue. The remaining temporary legacy module is a runtime-registration and helper bridge; `bot.py` is a compatibility shim that re-exports `configure_runtime` and `run`. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by the survey flow modules. |
+| Branching helpers mixed display strings with control-flow checks. | `survey/flow.py` keeps dependency predicates tied to option indices so translation wording changes do not silently change branching. |
 
 ## What is intentionally unchanged
 
@@ -74,5 +75,6 @@ security, and correctness fixes — not user-visible behaviour changes.
 ## Open work (planned, not yet done)
 
 - Reducing the remaining `_legacy.py` helper bridge further once runtime startup helpers and text-message custom-input handling have dedicated modules.
+- Removing `runtime._active_context` and remaining runtime scalar mirrors by passing `AppContext` explicitly through the last legacy wrapper layer.
 - Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.
