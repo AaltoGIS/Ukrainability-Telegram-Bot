@@ -12,17 +12,16 @@ import requests
 import telebot
 from telebot.apihelper import ApiTelegramException
 
+from . import startup
 from .app import AppContext
 from .cleanup import cleanup_old_voice_messages, cleanup_stop_event, start_cleanup_scheduler
 from .config import AppConfig
 from .handlers import register_handlers
 from .security import build_fernet
 from .sessions import SessionStore
-from . import startup
 from .telegram_io import telegram_retry_after
 
-
-flow_logger = logging.getLogger('flow_control')
+flow_logger = logging.getLogger("flow_control")
 flow_logger.setLevel(logging.INFO)
 
 
@@ -32,8 +31,9 @@ def _configure_logging(config: AppConfig) -> None:
         maxBytes=config.log_max_bytes,
         backupCount=config.log_backup_count,
     )
-    root_handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    root_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.ERROR)
     if not any(
@@ -53,8 +53,7 @@ def _configure_logging(config: AppConfig) -> None:
             maxBytes=config.log_max_bytes,
             backupCount=config.log_backup_count,
         )
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'))
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         flow_logger.addHandler(handler)
     flow_logger.setLevel(logging.INFO)
 
@@ -107,19 +106,28 @@ def start_polling_with_retry(ctx: AppContext) -> bool:
             ctx.bot.polling(non_stop=True, interval=1, timeout=60)
             return True
         except requests.exceptions.ReadTimeout:
-            delay = min(initial_delay * (2 ** retry), max_delay)
-            flow_logger.warning(f"Read timeout occurred (attempt {retry+1}/{max_retries}), retrying in {delay} seconds...")
+            delay = min(initial_delay * (2**retry), max_delay)
+            flow_logger.warning(
+                f"Read timeout occurred (attempt {retry+1}/{max_retries}), retrying in {delay} seconds..."
+            )
             time.sleep(delay)
         except requests.exceptions.ConnectionError:
-            delay = min(initial_delay * (2 ** retry), max_delay)
-            flow_logger.warning(f"Connection error (attempt {retry+1}/{max_retries}), retrying in {delay} seconds...")
+            delay = min(initial_delay * (2**retry), max_delay)
+            flow_logger.warning(
+                f"Connection error (attempt {retry+1}/{max_retries}), retrying in {delay} seconds..."
+            )
 
             try:
                 test_connection = requests.get("https://www.google.com", timeout=5)
                 if test_connection.status_code == 200:
-                    flow_logger.info("Internet connection appears to be working, likely a Telegram API issue")
+                    flow_logger.info(
+                        "Internet connection appears to be working, likely a Telegram API issue"
+                    )
                 else:
-                    flow_logger.warning("Internet connection test failed with status code: " + str(test_connection.status_code))
+                    flow_logger.warning(
+                        "Internet connection test failed with status code: "
+                        + str(test_connection.status_code)
+                    )
             except Exception as conn_test_error:
                 flow_logger.warning(f"Internet connection test failed: {conn_test_error}")
 
@@ -127,14 +135,16 @@ def start_polling_with_retry(ctx: AppContext) -> bool:
         except ApiTelegramException as e:
             if getattr(e, "error_code", None) == 429:
                 retry_after = telegram_retry_after(e, default=30)
-                flow_logger.warning(f"Rate limited by Telegram API, waiting {retry_after} seconds before retry")
+                flow_logger.warning(
+                    f"Rate limited by Telegram API, waiting {retry_after} seconds before retry"
+                )
                 time.sleep(retry_after + 5)
             else:
-                delay = min(initial_delay * (2 ** retry), max_delay)
+                delay = min(initial_delay * (2**retry), max_delay)
                 flow_logger.error(f"Telegram API error: {e}, retrying in {delay} seconds")
                 time.sleep(delay)
         except Exception as e:
-            delay = min(initial_delay * (2 ** retry) * 2, max_delay)
+            delay = min(initial_delay * (2**retry) * 2, max_delay)
             flow_logger.error(f"Unexpected error in polling: {e}")
             time.sleep(delay)
 
@@ -152,9 +162,14 @@ def run(
         config = AppConfig.from_env()
     ctx = configure_runtime(config)
     if initialize_database is None:
-        initialize_database = lambda: startup.initialize_database(ctx)
+
+        def initialize_database() -> None:
+            startup.initialize_database(ctx)
+
     if recover_user_sessions is None:
-        recover_user_sessions = lambda: startup.recover_user_sessions(ctx)
+
+        def recover_user_sessions() -> None:
+            startup.recover_user_sessions(ctx)
 
     startup_message = f"Bot starting with username: {ctx.bot_username}"
     print(startup_message)
@@ -192,7 +207,9 @@ def run(
                 time_since_last_error = current_time - last_error_time
                 if time_since_last_error < 60:
                     recovery_time = 60 - time_since_last_error
-                    flow_logger.warning(f"Too many errors recently, pausing for {recovery_time:.1f} seconds")
+                    flow_logger.warning(
+                        f"Too many errors recently, pausing for {recovery_time:.1f} seconds"
+                    )
                     time.sleep(recovery_time)
                     consecutive_fast_failures = max_consecutive_fast_failures // 2
 
@@ -228,7 +245,9 @@ def run(
             print(error_msg)
 
             if consecutive_fast_failures > max_consecutive_fast_failures:
-                flow_logger.critical(f"Detected {consecutive_fast_failures} consecutive fast failures. Entering extended recovery mode.")
+                flow_logger.critical(
+                    f"Detected {consecutive_fast_failures} consecutive fast failures. Entering extended recovery mode."
+                )
                 recovery_delay = 60
 
                 try:
@@ -236,7 +255,9 @@ def run(
                         flow_logger.info("Successfully reconnected to Telegram API")
                         consecutive_fast_failures = consecutive_fast_failures // 2
                 except Exception as conn_err:
-                    flow_logger.error(f"Failed to check Telegram connection in recovery mode: {conn_err}")
+                    flow_logger.error(
+                        f"Failed to check Telegram connection in recovery mode: {conn_err}"
+                    )
 
                 try:
                     initialize_database()

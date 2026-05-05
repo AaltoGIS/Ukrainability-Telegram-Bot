@@ -19,7 +19,6 @@ from ...telegram_io import (
 )
 from .base import register, resolve_actions
 
-
 # Index of "I didn't visit this place before the invasion" in messages options.
 DID_NOT_VISIT_BEFORE_INDICES = frozenset({3})
 

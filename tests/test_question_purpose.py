@@ -90,7 +90,8 @@ def test_handle_purpose_done_with_selection_clears_state_and_continues(
     assert app_context.sessions.get_data(user_id, "awaiting_multiple_select") is None
     ask_enjoyment.assert_called_once_with(456, user_id, "en")
     response_calls = [
-        call for call in app_context.bot.send_message.call_args_list
+        call
+        for call in app_context.bot.send_message.call_args_list
         if call.kwargs.get("parse_mode") == "HTML"
     ]
     assert "Walking; Birding" in response_calls[0].args[1]

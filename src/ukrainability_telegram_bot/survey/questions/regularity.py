@@ -21,7 +21,6 @@ from ...telegram_io import (
 )
 from .base import register, resolve_actions
 
-
 SKIP_TO_WISHLIST_INDICES = frozenset({4, 5, 6})
 
 

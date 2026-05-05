@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import threading
 import time
@@ -26,15 +25,16 @@ def cleanup_old_voice_messages(ctx: AppContext, days_to_keep: int | None = None)
         if days_to_keep is None:
             days_to_keep = ctx.config.voice_retention_days
         flow_logger.info(
-            f"Starting voice message cleanup, keeping messages from last {days_to_keep} days")
+            f"Starting voice message cleanup, keeping messages from last {days_to_keep} days"
+        )
         current_time = time.time()
         cutoff_time = current_time - (days_to_keep * 24 * 60 * 60)
         total_deleted = 0
 
         # Walk through voice files directory
-        for root, dirs, files in os.walk(voice_files_dir):
+        for root, _dirs, files in os.walk(voice_files_dir):
             for file in files:
-                if file.endswith('.enc'):  # Only process encrypted voice files
+                if file.endswith(".enc"):  # Only process encrypted voice files
                     file_path = os.path.join(root, file)
                     file_time = os.path.getmtime(file_path)
 
@@ -44,11 +44,9 @@ def cleanup_old_voice_messages(ctx: AppContext, days_to_keep: int | None = None)
                             os.remove(file_path)
                             total_deleted += 1
                         except Exception as e:
-                            flow_logger.error(
-                                f"Failed to delete old voice file {file_path}: {e}")
+                            flow_logger.error(f"Failed to delete old voice file {file_path}: {e}")
 
-        flow_logger.info(
-            f"Voice message cleanup complete. Deleted {total_deleted} files.")
+        flow_logger.info(f"Voice message cleanup complete. Deleted {total_deleted} files.")
     except Exception as e:
         flow_logger.error(f"Error in voice message cleanup: {e}")
 

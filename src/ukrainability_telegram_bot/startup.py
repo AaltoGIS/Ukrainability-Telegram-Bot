@@ -51,12 +51,8 @@ def recover_user_sessions(ctx: AppContext) -> None:
                 recovered_count += 1
                 ctx.flow_logger.info(f"Recovered session for user {user_id}")
             except Exception as inner_exc:
-                ctx.flow_logger.error(
-                    f"Error recovering session for user {user_id}: {inner_exc}"
-                )
+                ctx.flow_logger.error(f"Error recovering session for user {user_id}: {inner_exc}")
 
-        ctx.flow_logger.info(
-            f"Session recovery complete. Recovered {recovered_count} sessions."
-        )
+        ctx.flow_logger.info(f"Session recovery complete. Recovered {recovered_count} sessions.")
     except Exception as exc:
         ctx.flow_logger.error(f"Error in session recovery process: {exc}")

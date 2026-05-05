@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..messages import messages
 
-
 FIELD_ORDER = [
     "location",
     "purpose_visit",

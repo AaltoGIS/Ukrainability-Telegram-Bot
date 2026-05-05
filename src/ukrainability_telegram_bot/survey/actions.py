@@ -2,28 +2,61 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .. import nickname_db, startup
 from ..app import AppContext
 from ..telegram_io import clear_message_ids
 from .questions import (
     accessibility as accessibility_question,
+)
+from .questions import (
     changes_detail as changes_detail_question,
+)
+from .questions import (
     confirmation as confirmation_question,
+)
+from .questions import (
     demographics as demographics_question,
+)
+from .questions import (
     description as description_question,
+)
+from .questions import (
     duration as duration_question,
+)
+from .questions import (
     enjoyment as enjoyment_question,
+)
+from .questions import (
     frequency as frequency_question,
+)
+from .questions import (
     kremenchuk as kremenchuk_question,
+)
+from .questions import (
     location as location_question,
+)
+from .questions import (
     noticed_changes as noticed_changes_question,
+)
+from .questions import (
     purpose as purpose_question,
+)
+from .questions import (
     regularity as regularity_question,
+)
+from .questions import (
     restart as restart_question,
+)
+from .questions import (
     visitor_type as visitor_type_question,
+)
+from .questions import (
     welcome as welcome_question,
+)
+from .questions import (
     wishlist as wishlist_question,
 )
 

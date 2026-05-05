@@ -21,7 +21,6 @@ from ...telegram_io import (
 )
 from .base import register, resolve_actions
 
-
 DETAIL_REQUIRING_INDICES = frozenset({0, 1})
 
 
@@ -164,10 +163,7 @@ def confirm_noticed_changes(
                     selected_idx = -1
             previous_change = ctx.sessions.get_data(user_id, "noticed_changes", "")
 
-            if (
-                ctx.sessions.get_data(user_id, "modifying")
-                and previous_change != selected_change
-            ):
+            if ctx.sessions.get_data(user_id, "modifying") and previous_change != selected_change:
                 ctx.flow_logger.info(
                     "User %s: Modified noticed changes from '%s' to '%s'",
                     anon_id,

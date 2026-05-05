@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from telebot import types
 
@@ -39,12 +40,11 @@ def callbacks_from_context(ctx: AppContext, actions: Any | None = None) -> Welco
 
 @register("welcome")
 class WelcomeQuestion:
-    """Discovery entry for welcome flow until registration is centralized.
+    """Registry entry for the welcome flow.
 
-    Welcome is a special case during Phase 5 because it has multiple entry
-    points: the `/start` message handler, the `restart` callback, and
-    programmatic restarts after saving. The handler registry routes those entry points
-    explicitly while this class keeps the question visible in the registry.
+    Welcome has multiple entry points: the `/start` message handler, the `restart`
+    callback, and programmatic restarts after saving. Handler registration routes those
+    entry points explicitly while this class keeps the question visible in the registry.
     """
 
     name = "welcome"

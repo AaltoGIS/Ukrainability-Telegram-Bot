@@ -2,7 +2,6 @@ from collections import Counter
 
 from ukrainability_telegram_bot import runtime
 
-
 EXPECTED_HANDLER_NAMES = {
     "send_welcome",
     "handle_restart",
@@ -70,19 +69,14 @@ def test_handlers_registered_once(app_context):
         for handler_name, _args, _kwargs, handler_func in registered
     )
 
-    duplicates = {
-        handler: count
-        for handler, count in counts.items()
-        if count > 1
-    }
+    duplicates = {handler: count for handler, count in counts.items() if count > 1}
     assert duplicates == {}
 
 
 def test_no_callbacks_lost(app_context):
     registered = _registered_handlers(app_context)
     registered_names = {
-        handler_func.__name__
-        for _handler_name, _args, _kwargs, handler_func in registered
+        handler_func.__name__ for _handler_name, _args, _kwargs, handler_func in registered
     }
 
-    assert EXPECTED_HANDLER_NAMES <= registered_names
+    assert registered_names >= EXPECTED_HANDLER_NAMES

@@ -3,6 +3,7 @@ import sqlite3
 from unittest.mock import MagicMock
 
 import pytest
+
 from ukrainability_telegram_bot.security import decrypt_text
 from ukrainability_telegram_bot.storage import (
     ENCRYPTED_COLUMNS,
@@ -65,12 +66,15 @@ def test_save_response_skips_insert_when_consent_denied(app_context):
     initialize_database(app_context.config.db_file)
     app_context.sessions.set_profile(123, "consent", False)
 
-    assert save_response(
-        app_context,
-        123,
-        "en",
-        nickname_provider=lambda: "BrightFox07",
-    ) is True
+    assert (
+        save_response(
+            app_context,
+            123,
+            "en",
+            nickname_provider=lambda: "BrightFox07",
+        )
+        is True
+    )
 
     with sqlite3.connect(app_context.config.db_file) as conn:
         count = conn.execute("SELECT count(*) FROM responses").fetchone()[0]
@@ -84,12 +88,15 @@ def test_save_response_inserts_encrypted_response(app_context):
     app_context.sessions.set_data(123, "purpose_visit", ["Walk", "Rest"])
     app_context.sessions.set_data(123, "language", "en")
 
-    assert save_response(
-        app_context,
-        123,
-        "en",
-        nickname_provider=lambda: "BrightFox07",
-    ) is True
+    assert (
+        save_response(
+            app_context,
+            123,
+            "en",
+            nickname_provider=lambda: "BrightFox07",
+        )
+        is True
+    )
 
     with sqlite3.connect(app_context.config.db_file) as conn:
         stored = conn.execute(

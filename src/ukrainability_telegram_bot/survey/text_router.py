@@ -9,7 +9,6 @@ from ..messages import messages
 from ..telegram_io import safe_send_message
 from .actions import SurveyActions
 
-
 CUSTOM_INPUT_KEYS = {
     "purpose_visit": "custom_purposes",
     "changes_detail": "custom_changes",

@@ -36,9 +36,9 @@ def test_send_next_step_prompt_registers_before_send(app_context):
     app_context.bot.register_next_step_handler_by_chat_id.side_effect = (
         lambda chat_id, callback: calls.append(("register", chat_id, callback))
     )
-    app_context.bot.send_message.side_effect = (
-        lambda chat_id, text, **kwargs: calls.append(("send", chat_id, text)) or SimpleNamespace(message_id=1)
-    )
+    app_context.bot.send_message.side_effect = lambda chat_id, text, **kwargs: calls.append(
+        ("send", chat_id, text)
+    ) or SimpleNamespace(message_id=1)
 
     telegram_io.send_next_step_prompt(app_context, 123, "prompt", handler)
 

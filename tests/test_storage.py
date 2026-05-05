@@ -22,9 +22,7 @@ def test_initialize_database_creates_expected_schema(tmp_path):
     response_columns = set(table_columns(db_file, "responses"))
     for column in RESPONSE_COLUMNS:
         assert column in response_columns
-    assert {"user_hash", "nickname", "month_year"} <= set(
-        table_columns(db_file, "user_nicknames")
-    )
+    assert {"user_hash", "nickname", "month_year"} <= set(table_columns(db_file, "user_nicknames"))
 
 
 def test_nickname_persistence_is_month_scoped(tmp_path):

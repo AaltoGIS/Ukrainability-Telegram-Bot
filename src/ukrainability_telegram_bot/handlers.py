@@ -4,30 +4,63 @@ from __future__ import annotations
 
 from typing import Any
 
-from .survey.actions import SurveyActions
+from .app import AppContext
 from .survey import text_router
+from .survey.actions import SurveyActions
 from .survey.questions import (
     accessibility as accessibility_question,
+)
+from .survey.questions import (
     changes_detail as changes_detail_question,
+)
+from .survey.questions import (
     confirmation as confirmation_question,
+)
+from .survey.questions import (
     consent as consent_question,
+)
+from .survey.questions import (
     demographics as demographics_question,
+)
+from .survey.questions import (
     description as description_question,
+)
+from .survey.questions import (
     duration as duration_question,
+)
+from .survey.questions import (
     enjoyment as enjoyment_question,
+)
+from .survey.questions import (
     frequency as frequency_question,
+)
+from .survey.questions import (
     kremenchuk as kremenchuk_question,
+)
+from .survey.questions import (
     language as language_question,
-    location as location_question,
+)
+from .survey.questions import (
     noticed_changes as noticed_changes_question,
+)
+from .survey.questions import (
     purpose as purpose_question,
+)
+from .survey.questions import (
     regularity as regularity_question,
+)
+from .survey.questions import (
     restart as restart_question,
+)
+from .survey.questions import (
     visitor_type as visitor_type_question,
+)
+from .survey.questions import (
     welcome as welcome_question,
+)
+from .survey.questions import (
     wishlist as wishlist_question,
 )
-from .app import AppContext
 from .telegram_io import clear_callback_state
 
 
@@ -243,101 +276,96 @@ def register_handlers(ctx: AppContext) -> None:
     def handle_text_messages(message: Any) -> None:
         text_router.handle_text_messages(ctx, message, actions)
 
-    bot_instance.callback_query_handler(func=lambda call: call.data == "restart")(
-        handle_restart
-    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "restart")(handle_restart)
     bot_instance.message_handler(commands=["start"])(send_welcome)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("language_")
-    )(handle_language_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("consent_")
-    )(handle_consent)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "post_consent_continue"
-    )(handle_post_consent_continue)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("purpose_")
-    )(handle_purpose_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("enjoyment_")
-    )(handle_enjoyment_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_enjoyment"
-    )(confirm_enjoyment)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("visitor_")
-    )(handle_visitor_type_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("duration_")
-    )(handle_duration_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_duration"
-    )(confirm_duration)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("accessibility_")
-    )(handle_accessibility_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("regularity_")
-    )(handle_regularity_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_regularity"
-    )(confirm_regularity)
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("language_"))(
+        handle_language_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("consent_"))(
+        handle_consent
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "post_consent_continue")(
+        handle_post_consent_continue
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("purpose_"))(
+        handle_purpose_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("enjoyment_"))(
+        handle_enjoyment_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_enjoyment")(
+        confirm_enjoyment
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("visitor_"))(
+        handle_visitor_type_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("duration_"))(
+        handle_duration_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_duration")(
+        confirm_duration
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("accessibility_"))(
+        handle_accessibility_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("regularity_"))(
+        handle_regularity_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_regularity")(
+        confirm_regularity
+    )
     bot_instance.callback_query_handler(
         func=lambda call: call.data.startswith("frequency_change_")
     )(handle_frequency_change_selection)
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("noticed_changes_"))(
+        handle_noticed_changes_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_noticed_changes")(
+        confirm_noticed_changes
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("changes_detail_"))(
+        handle_changes_detail_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("wishlist_"))(
+        handle_wishlist_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("age_"))(
+        handle_age_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_age")(confirm_age)
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("gender_"))(
+        handle_gender_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_gender")(
+        confirm_gender
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("occupation_"))(
+        handle_occupation_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_occupation")(
+        confirm_occupation
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("income_"))(
+        handle_income_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "confirm_income")(
+        confirm_income
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("kremenchuk_"))(
+        handle_kremenchuk_selection
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data == "description_skip")(
+        handle_description_skip
+    )
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("final_"))(
+        handle_final_confirmation_choice
+    )
     bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("noticed_changes_")
-    )(handle_noticed_changes_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_noticed_changes"
-    )(confirm_noticed_changes)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("changes_detail_")
-    )(handle_changes_detail_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("wishlist_")
-    )(handle_wishlist_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("age_")
-    )(handle_age_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_age"
-    )(confirm_age)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("gender_")
-    )(handle_gender_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_gender"
-    )(confirm_gender)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("occupation_")
-    )(handle_occupation_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_occupation"
-    )(confirm_occupation)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("income_")
-    )(handle_income_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "confirm_income"
-    )(confirm_income)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("kremenchuk_")
-    )(handle_kremenchuk_selection)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data == "description_skip"
-    )(handle_description_skip)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("final_")
-    )(handle_final_confirmation_choice)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("modify_")
-        or call.data == "modification_done"
+        func=lambda call: call.data.startswith("modify_") or call.data == "modification_done"
     )(handle_modification_selection_callback)
-    bot_instance.callback_query_handler(
-        func=lambda call: call.data.startswith("continue_")
-    )(handle_continue_or_stop_selection)
+    bot_instance.callback_query_handler(func=lambda call: call.data.startswith("continue_"))(
+        handle_continue_or_stop_selection
+    )
     bot_instance.message_handler(func=lambda message: True, content_types=["text"])(
         handle_text_messages
     )

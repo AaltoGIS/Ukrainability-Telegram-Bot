@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from ukrainability_telegram_bot.config import AppConfig
@@ -34,9 +32,9 @@ def test_config_loads_from_environment(tmp_path):
 def test_config_loads_exported_credentials_file(tmp_path):
     credentials = tmp_path / "credentials"
     credentials.write_text(
-        'export TELEGRAM_BOT_TOKEN="legacy-token"\n'
-        "export ENCRYPTION_KEY='legacy-key'\n"
-        "export UKRAINABILITY_USER_HASH_SALT='legacy-salt'\n",
+        'export TELEGRAM_BOT_TOKEN="file-token"\n'
+        "export ENCRYPTION_KEY='file-key'\n"
+        "export UKRAINABILITY_USER_HASH_SALT='file-salt'\n",
         encoding="utf-8",
     )
     env = {
@@ -46,17 +44,17 @@ def test_config_loads_exported_credentials_file(tmp_path):
 
     config = AppConfig.from_env(env, load_dotenv_file=False)
 
-    assert config.telegram_bot_token == "legacy-token"
-    assert config.encryption_key == "legacy-key"
-    assert config.user_hash_salt == "legacy-salt"
+    assert config.telegram_bot_token == "file-token"
+    assert config.encryption_key == "file-key"
+    assert config.user_hash_salt == "file-salt"
 
 
 def test_config_warns_about_unbalanced_quotes_in_credentials_file(tmp_path, caplog):
     credentials = tmp_path / "credentials"
     credentials.write_text(
-        'export TELEGRAM_BOT_TOKEN="legacy-token\n'
-        "export ENCRYPTION_KEY='legacy-key'\n"
-        "export UKRAINABILITY_USER_HASH_SALT='legacy-salt'\n",
+        'export TELEGRAM_BOT_TOKEN="file-token\n'
+        "export ENCRYPTION_KEY='file-key'\n"
+        "export UKRAINABILITY_USER_HASH_SALT='file-salt'\n",
         encoding="utf-8",
     )
 
@@ -69,7 +67,7 @@ def test_config_warns_about_unbalanced_quotes_in_credentials_file(tmp_path, capl
     )
 
     assert "contains unbalanced quotes" in caplog.text
-    assert config.telegram_bot_token == '"legacy-token'
+    assert config.telegram_bot_token == '"file-token'
 
 
 def test_config_supports_key_rotation_list(tmp_path):

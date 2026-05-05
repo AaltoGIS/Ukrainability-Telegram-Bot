@@ -62,9 +62,9 @@ def ask_enjoyment(
 
         if all_purposes:
             joined_purposes = ", ".join(all_purposes)
-            enjoyment_text = messages[language][
-                "enjoyment_question_with_purposes"
-            ].format(purposes=joined_purposes)
+            enjoyment_text = messages[language]["enjoyment_question_with_purposes"].format(
+                purposes=joined_purposes
+            )
         else:
             enjoyment_text = messages[language]["enjoyment_question"]
 

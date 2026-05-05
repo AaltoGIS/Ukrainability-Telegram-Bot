@@ -140,7 +140,8 @@ def test_changes_detail_done_with_selection_continues_to_wishlist(app_context):
     assert app_context.sessions.get_data(user_id, "awaiting_multiple_select") is None
     ask_wishlist.assert_called_once_with(456, user_id, "en")
     response_call = [
-        call for call in app_context.bot.send_message.call_args_list
+        call
+        for call in app_context.bot.send_message.call_args_list
         if call.kwargs.get("parse_mode") == "HTML"
     ][0]
     assert "Services; More seating" in response_call.args[1]

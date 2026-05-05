@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import logging
+import os
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, MutableMapping, Optional
 
 try:
     from dotenv import load_dotenv
@@ -28,7 +28,7 @@ class AppConfig:
     user_hash_salt: str
     retiring_encryption_keys: tuple[str, ...] = ()
     storage_dir: Path = Path(DEFAULT_STORAGE_DIR)
-    credentials_file: Optional[Path] = Path(DEFAULT_CREDENTIALS_FILE)
+    credentials_file: Path | None = Path(DEFAULT_CREDENTIALS_FILE)
     bot_errors_log: str = "bot_errors.log"
     flow_control_log: str = "flow_control.log"
     log_max_bytes: int = 5_000_000
@@ -47,17 +47,15 @@ class AppConfig:
     @classmethod
     def from_env(
         cls,
-        environ: Optional[MutableMapping[str, str]] = None,
+        environ: MutableMapping[str, str] | None = None,
         *,
         load_dotenv_file: bool = True,
-    ) -> "AppConfig":
+    ) -> AppConfig:
         env = os.environ if environ is None else environ
         if load_dotenv_file and load_dotenv is not None:
             load_dotenv()
 
-        credentials_file = Path(
-            env.get("UKRAINABILITY_CREDENTIALS_FILE", DEFAULT_CREDENTIALS_FILE)
-        )
+        credentials_file = Path(env.get("UKRAINABILITY_CREDENTIALS_FILE", DEFAULT_CREDENTIALS_FILE))
         credentials = _read_export_file(credentials_file)
 
         token = env.get("TELEGRAM_BOT_TOKEN") or credentials.get("TELEGRAM_BOT_TOKEN")
@@ -108,7 +106,7 @@ class AppConfig:
 
 
 def _read_export_file(path: Path) -> Mapping[str, str]:
-    """Read shell-style `export NAME=value` lines from the legacy credentials file."""
+    """Read shell-style ``export NAME=value`` lines from a credentials file."""
 
     values: dict[str, str] = {}
     try:

@@ -12,6 +12,7 @@ def test_cleanup_old_voice_messages_uses_context_storage(app_context, tmp_path):
     old_time = time.time() - (31 * 24 * 60 * 60)
     old_file.touch()
     import os
+
     os.utime(old_file, (old_time, old_time))
 
     cleanup.cleanup_old_voice_messages(app_context, days_to_keep=30)
@@ -38,6 +39,7 @@ def test_cleanup_scheduler_runs_once_at_startup_then_waits(monkeypatch, app_cont
         first_pass.set()
 
     monkeypatch.setattr(cleanup, "cleanup_old_voice_messages", cleanup_voice)
+
     def evict_inactive(hours):
         calls.append("sessions")
         return []

@@ -7,7 +7,7 @@ response fields and voice-message files.
 
 ## Install
 
-Use Python 3.9 or newer.
+Use Python 3.10 or newer.
 
 ```bash
 python3 -m pip install .
@@ -29,12 +29,6 @@ The package installs a command-line entrypoint:
 
 ```bash
 ukrainability-bot
-```
-
-The legacy script name still works as a compatibility launcher:
-
-```bash
-python3 pryroda_kremenchuk.py
 ```
 
 ## Configuration
@@ -67,7 +61,7 @@ export UKRAINABILITY_CLEANUP_INTERVAL_SECONDS="86400"
 ```
 
 `UKRAINABILITY_STORAGE_DIR` defaults to `/home/ubuntu/kremenchuk` to preserve
-the existing deployment. The legacy credentials file may contain:
+the existing deployment. The credentials file may contain:
 
 ```bash
 export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
@@ -129,12 +123,10 @@ this repository only prepares the package for building and publishing.
 ```text
 src/ukrainability_telegram_bot/
   app.py        # AppContext dependency container
-  _legacy.py    # temporary legacy survey flow, shrinking as questions migrate
-  bot.py        # compatibility shim re-exporting runtime entrypoints
   cli.py        # ukrainability-bot entrypoint
   cleanup.py    # voice retention and cleanup scheduler
-  config.py     # environment and legacy credentials loading
-  runtime.py    # runtime configuration, polling, and handler registry
+  config.py     # environment and credentials loading
+  runtime.py    # runtime configuration and polling
   security.py   # Fernet helpers
   sessions.py   # thread-safe user/session/message-id state
   storage.py    # SQLite helpers
