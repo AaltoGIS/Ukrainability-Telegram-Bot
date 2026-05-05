@@ -62,7 +62,7 @@ python3 pryroda_kremenchuk.py
 
 ## Configuration
 
-Required environment variables:
+Required environment variables (see below recommendations how to generate secure keys):
 
 ```bash
 export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
