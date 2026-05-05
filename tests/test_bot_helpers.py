@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -39,7 +40,9 @@ def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp
 
     try:
         assert bot.save_data_and_restart(456, user_id, "en") is True
-        assert not app_context.config.db_file.exists()
+        with sqlite3.connect(app_context.config.db_file) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
+        assert count == 0
     finally:
         with app_context.sessions.lock:
             app_context.sessions.data.pop(user_id, None)

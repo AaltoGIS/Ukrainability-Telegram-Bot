@@ -20,7 +20,6 @@ from pathlib import Path
 
 import telebot
 from telebot import types
-from telebot.apihelper import ApiTelegramException
 
 from .messages import messages
 from .pseudonym import hash_user_id
@@ -32,6 +31,14 @@ from .survey.persistence import (
     EncryptionUnavailableError,
     save_response,
 )
+from .survey.questions import consent as consent_question
+from .survey.questions import description as description_question
+from .survey.questions import purpose as purpose_question
+from .survey.questions.base import (
+    ConsentCallbacks,
+    DescriptionCallbacks,
+    PurposeCallbacks,
+)
 from . import telegram_io as telegram_io_module
 from .telegram_io import (
     callback_index,
@@ -40,7 +47,6 @@ from .telegram_io import (
     redacted_coordinate,
     telegram_retry_after,
 )
-from .voice import new_voice_filename, safe_nickname_directory
 
 
 # Temporary import-time registry; Phase 5 registers handlers after runtime setup.
@@ -771,111 +777,17 @@ def handle_language_selection(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('consent_'))
 def handle_consent(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        # Ensure language is available
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                _user_data()[user_id]['language'] = _user_profiles()[user_id]['language']
-            else:
-                bot.send_message(
-                    chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-                return
-
-        language = _user_data()[user_id]['language']
-        consent_options = messages[language]['consent_options']
-        try:
-            idx = callback_index(call.data, "consent", consent_options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language]['invalid_selection'])
-            return
-
-        if 0 <= idx < len(consent_options):
-            consent_response = consent_options[idx]
-            # Remove inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            if consent_response == consent_options[0]:  # User agrees
-                nickname = _user_data()[user_id]['nickname']
-                consent_message = messages[language]['consent_given'].format(
-                    nickname=f"<b>{escape_html(nickname)}</b>")
-                _user_profiles().setdefault(user_id, {})['consent'] = True
-
-                # Show "Continue" button after consent given with a loading
-                # indicator
-                bot.answer_callback_query(
-                    call.id,
-                    "Thank you for agreeing to participate!" if language == 'en' else "Дякуємо за вашу згоду на участь!")
-
-                # Show "Continue" button after consent given
-                continue_text = "Continue" if language == 'en' else "Продовжити"
-                inline_kb = types.InlineKeyboardMarkup()
-                continue_button = types.InlineKeyboardButton(
-                    continue_text, callback_data='post_consent_continue')
-                inline_kb.add(continue_button)
-
-                bot.send_message(
-                    chat_id,
-                    consent_message,
-                    parse_mode='HTML',
-                    reply_markup=inline_kb)
-
-            elif consent_response == consent_options[1]:  # User does not agree
-                _user_profiles().setdefault(user_id, {})['consent'] = False
-                inline_kb = types.InlineKeyboardMarkup()
-                restart_button = types.InlineKeyboardButton(
-                    text=messages[language]['restart_button'], callback_data='restart')
-                inline_kb.add(restart_button)
-
-                bot.answer_callback_query(
-                    call.id,
-                    "Thank you for your time." if language == 'en' else "Дякуємо за ваш час.")
-
-                bot.send_message(
-                    chat_id,
-                    messages[language]['consent_denied'],
-                    reply_markup=inline_kb
-                )
-            else:
-                bot.answer_callback_query(
-                    call.id, messages[language]['invalid_selection'])
-        else:
-            bot.answer_callback_query(
-                call.id, messages[language]['invalid_selection'])
-
-    except Exception as e:
-        logging.exception(f"Error in handle_consent: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    consent_question.handle_consent(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data ==
                             'post_consent_continue')
 def handle_post_consent_continue(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Remove the inline keyboard
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=None)
-
-        # Now send the location prompt
-        send_next_step_prompt(
-            chat_id,
-            messages[language]['send_location'],
-            handle_location_step)
-    except Exception as e:
-        logging.exception(f"Error in handle_post_consent_continue: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    consent_question.handle_post_consent_continue(
+        _ctx(),
+        call,
+        ConsentCallbacks(location_handler=handle_location_step),
+    )
 
 
 
@@ -1044,191 +956,28 @@ def handle_location_step(message):
 # Purpose visit handler
 # Updated ask_purpose_visit function
 def ask_purpose_visit(chat_id, user_id, language):
-    try:
-        # Clear old values using thread-safe methods
-        set_user_data(user_id, 'purpose_visit', [])
-        set_user_data(user_id, 'custom_purposes', [])
-        set_user_data(user_id, 'awaiting_multiple_select', 'purpose_visit')
-
-        # Get all options except 'Other'
-        options = messages[language]['options']['purpose_visit'][:-1]
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"purpose_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        # Add Done button
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="purpose_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['purpose_visit']}\n\n"
-            f"{'You can also type your own activity as a text message. ' if language=='en' else 'Ви також можете ввести власний варіант у полі введення тексту. '}"
-            f"{'When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.'}")
-
-        # Use our enhanced message sender that tracks the message ID
-        send_keyboard_message(
-            chat_id, 
-            user_id, 
-            instruction_text, 
-            inline_kb, 
-            "purpose_visit"
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_purpose_visit: {e}")
-        safe_send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    purpose_question.ask_purpose_visit(_ctx(), chat_id, user_id, language)
 
 
 # Updated handle_purpose_selection function
 @bot.callback_query_handler(func=lambda call: call.data.startswith('purpose_'))
 def handle_purpose_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = get_user_data(user_id, 'language')
-        data = callback_suffix(call.data, "purpose")
-
-        if data == 'done':
-            purpose_visit = get_user_data(user_id, 'purpose_visit', [])
-            custom_purposes = get_user_data(user_id, 'custom_purposes', [])
-            
-            if not purpose_visit and not custom_purposes:
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard using our registry
-            edit_keyboard(user_id, chat_id, "purpose_visit", None)
-
-            # Combine selected options and custom inputs
-            all_purposes = purpose_visit + custom_purposes
-
-            # Acknowledge completion with a feedback message
-            safe_answer_callback(
-                call, "Selections saved" if language == 'en' else "Вибір збережено")
-
-            # Echo user's selection
-            purposes = '; '.join(escape_html(p) for p in all_purposes)
-            safe_send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{purposes}</i>",
-                parse_mode='HTML')
-
-            # Clear the awaiting_multiple_select state
-            remove_user_data(user_id, 'awaiting_multiple_select')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if we're in modifying mode
-            if get_user_data(user_id, 'modifying'):
-                remove_user_data(user_id, 'modifying')
-                remove_user_data(user_id, 'modifying_field')
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # After purpose selection is complete, ask enjoyment
-                # Add a slight delay for better UX transition
-                time.sleep(0.5)
-                ask_enjoyment(chat_id, user_id, language)
-        else:
-            # Remove the 'Other' option
-            options = messages[language]['options']['purpose_visit'][:-1]
-            try:
-                idx = callback_index(call.data, "purpose", options)
-            except (ValueError, IndexError):
-                safe_answer_callback(
-                    call, messages[language].get(
-                        'invalid_selection', "Invalid selection."))
-                return
-
-            selected_option = options[idx]
-                
-            # Get the current purposes using thread-safe access
-            purpose_visit = get_user_data(user_id, 'purpose_visit', [])
-
-            # Just toggle selection
-            if selected_option in purpose_visit:
-                purpose_visit.remove(selected_option)
-                safe_answer_callback(
-                    call, f"{messages[language]['unselected']} {selected_option}")
-            else:
-                purpose_visit.append(selected_option)
-                safe_answer_callback(
-                    call, f"{messages[language]['selected']} {selected_option}")
-                
-            # Save the updated list using thread-safe method
-            set_user_data(user_id, 'purpose_visit', purpose_visit)
-
-            update_purpose_selection_keyboard(
-                call.message, user_id, language)
-    except Exception as e:
-        handle_callback_error(call, e, "handle_purpose_selection")
+    purpose_question.handle_purpose_selection(
+        _ctx(),
+        call,
+        PurposeCallbacks(
+            ask_enjoyment=ask_enjoyment,
+            ask_final_confirmation=ask_final_confirmation,
+            clear_callback_state=clear_callback_state,
+        ),
+    )
 
 
 # Updated update_purpose_selection_keyboard function
 def update_purpose_selection_keyboard(message, user_id, language):
-    try:
-        # Get data using thread-safe methods
-        options = messages[language]['options']['purpose_visit'][:-1]
-        selected_options = get_user_data(user_id, 'purpose_visit', [])
-        custom_options = get_user_data(user_id, 'custom_purposes', [])
-
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = []
-        for idx, option in enumerate(options):
-            button_text = f"✅ {option}" if option in selected_options else option
-            callback_data = f"purpose_{idx}"
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data))
-
-        # Only add the Done button if there's at least one selection
-        if selected_options or custom_options:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="purpose_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        # Use our registry to get the right message ID
-        message_id = get_message_id(user_id, "purpose_visit")
-        if message_id:
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=message.chat.id,
-                    message_id=message_id,
-                    reply_markup=inline_kb)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    logging.exception(
-                        f"Error in update_purpose_selection_keyboard: {e}")
-        else:
-            # Fallback - use the provided message
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=message.chat.id,
-                    message_id=message.message_id,
-                    reply_markup=inline_kb)
-            except telebot.apihelper.ApiTelegramException as e:
-                if "message is not modified" not in str(e):
-                    logging.exception(
-                        f"Error in update_purpose_selection_keyboard: {e}")
-    except Exception as e:
-        logging.exception(f"Error in update_purpose_selection_keyboard: {e}")
+    purpose_question.update_purpose_selection_keyboard(
+        _ctx(), message, user_id, language
+    )
 
 
 
@@ -3593,233 +3342,39 @@ def update_kremenchuk_keyboard(message, user_id, language, options):
 
 # Description handlers
 def ask_description(chat_id, user_id, language):
-    try:
-        # Ensure kremenchuk is loaded from profiles if available
-        if 'kremenchuk' not in _user_data()[user_id] and user_id in _user_profiles() and 'kremenchuk' in _user_profiles()[user_id]:
-            _user_data()[user_id]['kremenchuk'] = _user_profiles()[user_id]['kremenchuk']
-
-        # If we're not modifying 'description', and description_done is True,
-        # skip this step
-        if _user_data()[user_id].get('description_done') and not (
-            _user_data()[user_id].get('modifying') and
-            _user_data()[user_id].get('modifying_field') == 'description'
-        ):
-            # If the user has already provided or skipped description in a previous flow
-            # and we're not currently modifying it, go directly to final
-            # confirmation.
-            ask_final_confirmation(chat_id, user_id, language)
-            return
-
-        # If modifying but not the description field, skip asking it again
-        if _user_data()[user_id].get('modifying'):
-            field_modified = _user_data()[user_id].get('modifying_field')
-            if field_modified != 'description':
-                ask_final_confirmation(chat_id, user_id, language)
-                return
-
-        # Otherwise, proceed to ask the description
-        inline_kb = types.InlineKeyboardMarkup()
-        skip_button = types.InlineKeyboardButton(
-            text=messages[language]['skip_button'],
-            callback_data='description_skip')
-        inline_kb.add(skip_button)
-
-        # Add more clear instructions on how to leave a voice message
-        enhanced_instructions = messages[language]['add_description']
-        if language == 'en':
-            enhanced_instructions += "\n\n(To send a voice message, touch and hold the microphone icon in the message bar, speak, and then release.)"
-        else:
-            enhanced_instructions += "\n\n(Щоб надіслати голосове повідомлення, натисніть і утримуйте іконку мікрофона в рядку повідомлень, говоріть і потім відпустіть.)"
-
-        send_next_step_prompt(
-            chat_id,
-            enhanced_instructions,
-            handle_description,
-            reply_markup=inline_kb)
-
-    except Exception as e:
-        logging.exception(f"Error in ask_description: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    description_question.ask_description(
+        _ctx(),
+        chat_id,
+        user_id,
+        language,
+        DescriptionCallbacks(
+            ask_final_confirmation=ask_final_confirmation,
+            description_handler=handle_description,
+        ),
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'description_skip')
 def handle_description_skip(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Clear the next step handler
-        bot.clear_step_handler_by_chat_id(chat_id)
-
-        # Remove the inline keyboard
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=None)
-
-        # Mark description as done (skipped)
-        _user_data()[user_id]['description_done'] = True
-
-        # Notify user that they skipped the description
-        bot.send_message(chat_id, messages[language]['description_skipped'])
-
-        ask_final_confirmation(chat_id, user_id, language)
-
-    except Exception as e:
-        logging.exception(f"Error in handle_description_skip: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    description_question.handle_description_skip(
+        _ctx(),
+        call,
+        DescriptionCallbacks(
+            ask_final_confirmation=ask_final_confirmation,
+            description_handler=handle_description,
+        ),
+    )
 
 
 def handle_description(message):
-    try:
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-
-        # Ensure user is properly set up
-        language = get_user_data(user_id, 'language')
-        if not language:
-            if get_user_profile(user_id, 'language'):
-                language = get_user_profile(user_id, 'language')
-                set_user_data(user_id, 'language', language)
-            else:
-                safe_send_message(chat_id, "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-                return
-
-        description = ''
-        voice_submitted = ''
-
-        # Remove inline keyboard if it exists
-        try:
-            # Clear any previous keyboard
-            message_id = get_message_id(user_id, "description_request")
-            if message_id:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id, 
-                    message_id=message_id, 
-                    reply_markup=None
-                )
-        except Exception:
-            pass  # Ignore failures in clearing previous keyboards
-
-        if message.content_type == 'text':
-            description = message.text.strip()
-            safe_send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(description)}</i>",
-                parse_mode='HTML'
-            )
-        elif message.content_type == 'voice':
-            # Check if encryption is available before writing voice content.
-            if _fernet() is None:
-                # Log the error and inform the user
-                flow_logger.error("Encryption system not initialized, voice message not saved")
-                safe_send_message(
-                    chat_id,
-                    "Sorry, there was an error processing your voice message. Please try sending a text response instead.",
-                    parse_mode='HTML'
-                )
-                # Re-register for a new attempt
-                bot.register_next_step_handler_by_chat_id(
-                    chat_id, handle_description)
-                return
-
-            try:
-                # Process voice message with retry logic
-                for attempt in range(3):  # Try up to 3 times
-                    try:
-                        voice_file_id = message.voice.file_id
-                        file_info = bot.get_file(voice_file_id)
-                        downloaded_file = bot.download_file(file_info.file_path)
-                        
-                        # Successfully downloaded, break retry loop
-                        break
-                    except ApiTelegramException as e:
-                        if getattr(e, "error_code", None) == 429:
-                            retry_after = telegram_retry_after(e, default=3)
-                            flow_logger.warning(f"Voice download error: {e}, retrying in {retry_after}s")
-                            time.sleep(retry_after)
-                        elif attempt < 2:
-                            retry_after = 2 ** attempt
-                            flow_logger.warning(f"Voice download API error: {e}, retrying in {retry_after}s")
-                            time.sleep(retry_after)
-                        else:
-                            # Final attempt failed
-                            raise
-                
-                # Encrypt the voice file
-                encrypted_voice = _fernet().encrypt(downloaded_file)
-                
-                # Get a thread-safe copy of the nickname
-                nickname = get_user_data(user_id, 'nickname')
-                
-                # Create directory for user's voice files
-                user_voice_dir = safe_nickname_directory(_voice_files_dir(), nickname)
-                os.makedirs(user_voice_dir, exist_ok=True)
-                
-                # Generate a non-racy filename to avoid concurrent upload collisions.
-                filename = new_voice_filename(nickname)
-                voice_filename = user_voice_dir / filename
-
-                # Write the encrypted file
-                with open(voice_filename, 'wb') as new_file:
-                    new_file.write(encrypted_voice)
-
-                voice_submitted = os.path.join(nickname, filename)
-
-                safe_send_message(
-                    chat_id,
-                    f"<b>{messages[language]['your_response']}</b> {messages[language]['voice_message_submitted']}",
-                    parse_mode='HTML'
-                )
-            except Exception as voice_error:
-                flow_logger.error(f"Error processing voice message: {voice_error}")
-                safe_send_message(
-                    chat_id,
-                    "Sorry, there was an error processing your voice message. Please try sending a text response instead.",
-                    parse_mode='HTML'
-                )
-                # Re-register for a new attempt
-                bot.register_next_step_handler_by_chat_id(
-                    chat_id, handle_description)
-                return
-        else:
-            safe_send_message(chat_id, messages[language]['please_send_text_or_voice'])
-            bot.register_next_step_handler_by_chat_id(
-                chat_id, handle_description)
-            return
-
-        # Store data using thread-safe methods
-        set_user_data(user_id, 'description', description)
-        set_user_data(user_id, 'voice_submitted', voice_submitted)
-        set_user_data(user_id, 'description_done', True)
-
-        ask_final_confirmation(chat_id, user_id, language)
-
-    except Exception as e:
-        logging.exception(f"Error in handle_description: {e}")
-        try:
-            language = get_user_data(user_id, 'language', 'en')
-            error_msg = messages.get(language, {}).get('error_occurred', "An error occurred. Please try again later.")
-            safe_send_message(chat_id, error_msg)
-            
-            # Provide a way to continue
-            inline_kb = types.InlineKeyboardMarkup()
-            skip_text = messages.get(language, {}).get('skip_button', "Skip")
-            skip_button = types.InlineKeyboardButton(text=skip_text, callback_data='description_skip')
-            inline_kb.add(skip_button)
-            
-            retry_msg = "Would you like to try again or skip the description?" if language == 'en' else "Хочете спробувати знову чи пропустити опис?"
-            safe_send_message(chat_id, retry_msg, reply_markup=inline_kb)
-        except Exception:
-            # Fallback if everything else fails
-            bot.reply_to(message, "An error occurred. Please try again later.")
-
-                # Re-register for a new attempt
+    description_question.handle_description(
+        _ctx(),
+        message,
+        DescriptionCallbacks(
+            ask_final_confirmation=ask_final_confirmation,
+            description_handler=handle_description,
+        ),
+    )
 
 
 # Response confirmation and modification
