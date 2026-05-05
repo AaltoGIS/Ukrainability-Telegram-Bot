@@ -9,10 +9,8 @@ from ukrainability_telegram_bot.survey.questions import (
     regularity,
     visitor_type,
 )
-from ukrainability_telegram_bot.survey.questions.base import (
-    RegularityCallbacks,
-    VisitorTypeCallbacks,
-)
+from ukrainability_telegram_bot.survey.questions.regularity import RegularityCallbacks
+from ukrainability_telegram_bot.survey.questions.visitor_type import VisitorTypeCallbacks
 
 
 def _call(data, user_id=123, chat_id=456, message_id=789):

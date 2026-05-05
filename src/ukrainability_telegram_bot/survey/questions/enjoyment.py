@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import telebot
@@ -17,7 +19,13 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import EnjoymentCallbacks, register
+from .base import register
+
+
+@dataclass(frozen=True)
+class EnjoymentCallbacks:
+    ask_visitor_type: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
 
 
 @register("enjoyment")
@@ -46,16 +54,9 @@ def ask_enjoyment(
 
         if all_purposes:
             joined_purposes = ", ".join(all_purposes)
-            if language == "en":
-                enjoyment_text = (
-                    "How did you find your time spent at this place while engaging in: "
-                    f"{joined_purposes}?"
-                )
-            else:
-                enjoyment_text = (
-                    "Як вам сподобався ваш час, проведений у цьому місці, займаючись: "
-                    f"{joined_purposes}?"
-                )
+            enjoyment_text = messages[language][
+                "enjoyment_question_with_purposes"
+            ].format(purposes=joined_purposes)
         else:
             enjoyment_text = messages[language]["enjoyment_question"]
 
@@ -131,7 +132,7 @@ def handle_enjoyment_selection(
         safe_answer_callback(ctx, call, f"{messages[language]['selected']} {enjoyment}")
     except Exception as exc:
         logging.exception(f"Error in handle_enjoyment_selection: {exc}")
-        safe_send_message(ctx, chat_id, messages["en"]["error_occurred"])
+        safe_send_message(ctx, chat_id, messages[language]["error_occurred"])
 
 
 def confirm_enjoyment(

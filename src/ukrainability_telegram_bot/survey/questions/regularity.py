@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import telebot
@@ -17,17 +19,19 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import RegularityCallbacks, register
+from .base import register
 
 
-SKIP_TO_WISHLIST_OPTIONS = (
-    "One-time visit",
-    "Разове відвідування",
-    "Visited before 2022 but not anymore",
-    "Відвідував(-ла) до 2022 р., але не зараз",
-    "Prefer not to disclose",
-    "Надаю перевагу не вказувати",
-)
+SKIP_TO_WISHLIST_INDICES = frozenset({4, 5, 6})
+
+
+@dataclass(frozen=True)
+class RegularityCallbacks:
+    ask_noticed_changes: Callable[[int, int, str], Any]
+    ask_wishlist: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+    clear_dependent_fields: Callable[[int, str, Any, Any], list[str]]
+    get_anonymous_id: Callable[[int], str]
 
 
 @register("regularity")
@@ -80,6 +84,7 @@ def handle_regularity_selection(ctx: AppContext, call: Any) -> None:
 
         selected_regularity = options[selected_idx]
         ctx.sessions.set_data(user_id, "temp_regularity", selected_regularity)
+        ctx.sessions.set_data(user_id, "temp_regularity_idx", selected_idx)
 
         inline_kb = types.InlineKeyboardMarkup(row_width=1)
         for idx, option in enumerate(options):
@@ -130,6 +135,14 @@ def confirm_regularity(
         selected_regularity = ctx.sessions.get_data(user_id, "temp_regularity")
 
         if selected_regularity:
+            selected_idx = ctx.sessions.get_data(user_id, "temp_regularity_idx")
+            if selected_idx is None:
+                try:
+                    selected_idx = messages[language]["options"]["regularity"].index(
+                        selected_regularity
+                    )
+                except ValueError:
+                    selected_idx = -1
             previous_regularity = ctx.sessions.get_data(user_id, "regularity", "")
             if previous_regularity != selected_regularity:
                 ctx.flow_logger.info(
@@ -142,6 +155,7 @@ def confirm_regularity(
             ctx.sessions.set_data(user_id, "regularity", selected_regularity)
             ctx.sessions.set_profile(user_id, "regularity", selected_regularity)
             ctx.sessions.remove_data(user_id, "temp_regularity")
+            ctx.sessions.remove_data(user_id, "temp_regularity_idx")
             ctx.sessions.remove_data(user_id, "current_question")
 
             if previous_regularity != selected_regularity:
@@ -172,9 +186,7 @@ def confirm_regularity(
             )
             hide_keyboard(ctx, chat_id)
 
-            should_skip = any(
-                pattern in selected_regularity for pattern in SKIP_TO_WISHLIST_OPTIONS
-            )
+            should_skip = selected_idx in SKIP_TO_WISHLIST_INDICES
             if ctx.sessions.get_data(user_id, "modifying"):
                 if not should_skip:
                     ctx.flow_logger.info(

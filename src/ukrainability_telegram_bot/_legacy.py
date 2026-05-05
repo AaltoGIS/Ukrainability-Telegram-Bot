@@ -37,15 +37,15 @@ from .survey.questions import purpose as purpose_question
 from .survey.questions import regularity as regularity_question
 from .survey.questions import visitor_type as visitor_type_question
 from .survey.questions import welcome as welcome_question
+from .survey.questions.accessibility import AccessibilityCallbacks
+from .survey.questions.duration import DurationCallbacks
+from .survey.questions.enjoyment import EnjoymentCallbacks
+from .survey.questions.regularity import RegularityCallbacks
+from .survey.questions.visitor_type import VisitorTypeCallbacks
 from .survey.questions.base import (
-    AccessibilityCallbacks,
     ConsentCallbacks,
     DescriptionCallbacks,
-    DurationCallbacks,
-    EnjoymentCallbacks,
     PurposeCallbacks,
-    RegularityCallbacks,
-    VisitorTypeCallbacks,
 )
 from . import telegram_io as telegram_io_module
 from .telegram_io import (

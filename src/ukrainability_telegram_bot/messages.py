@@ -58,6 +58,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Alternatively, you can simply type the name of the location as a text message."
         ),
         'enjoyment_question': "How did you find your time spent at this place?",
+        'enjoyment_question_with_purposes': (
+            "How did you find your time spent at this place while engaging in: {purposes}?"
+        ),
         'enjoyment_options': [
             "Very enjoyable",
             "Enjoyable",
@@ -303,6 +306,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "4. Натисніть 'Надіслати вибране розташування'."
         ),
         'enjoyment_question': "Як вам сподобався ваш час, проведений у цьому місці?",
+        'enjoyment_question_with_purposes': (
+            "Як вам сподобався ваш час, проведений у цьому місці, займаючись: {purposes}?"
+        ),
         'enjoyment_options': [
             "Дуже сподобався",
             "Сподобався",

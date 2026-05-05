@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import telebot
@@ -18,7 +20,13 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
-from .base import VisitorTypeCallbacks, register
+from .base import register
+
+
+@dataclass(frozen=True)
+class VisitorTypeCallbacks:
+    ask_duration: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
 
 
 @register("visitor_type")
