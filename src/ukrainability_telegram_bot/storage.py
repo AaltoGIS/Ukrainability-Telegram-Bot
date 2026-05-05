@@ -119,6 +119,20 @@ def get_user_nickname(db_file: Path, user_hash: str, month_year: str) -> Optiona
     return row[0] if row else None
 
 
+def get_latest_user_nickname(db_file: Path, user_hash: str) -> Optional[str]:
+    with sqlite3.connect(db_file, check_same_thread=False) as conn:
+        cursor = conn.execute(
+            """
+            SELECT nickname FROM user_nicknames
+            WHERE user_hash = ?
+            ORDER BY month_year DESC LIMIT 1
+            """,
+            (user_hash,),
+        )
+        row = cursor.fetchone()
+    return row[0] if row else None
+
+
 def get_all_used_nicknames(db_file: Path) -> set[str]:
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         cursor = conn.execute("SELECT DISTINCT nickname FROM user_nicknames")

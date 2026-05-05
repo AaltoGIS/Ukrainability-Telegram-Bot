@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 from .app import AppContext
 from .pseudonym import hash_user_id
+from .storage import get_latest_user_nickname
 from .storage import initialize_database as initialize_storage_database
 
 
@@ -44,7 +43,7 @@ def recover_user_sessions(ctx: AppContext) -> None:
 
                 if ctx.sessions.get_data(user_id, "nickname") is None:
                     user_hash = hash_user_id(user_id, ctx.config.user_hash_salt)
-                    nickname = _get_latest_user_nickname(ctx, user_hash)
+                    nickname = get_latest_user_nickname(ctx.config.db_file, user_hash)
                     if nickname:
                         ctx.sessions.set_data(user_id, "nickname", nickname)
 
@@ -61,17 +60,3 @@ def recover_user_sessions(ctx: AppContext) -> None:
         )
     except Exception as exc:
         ctx.flow_logger.error(f"Error in session recovery process: {exc}")
-
-
-def _get_latest_user_nickname(ctx: AppContext, user_hash: str) -> str | None:
-    with sqlite3.connect(ctx.config.db_file, check_same_thread=False) as conn:
-        cursor = conn.execute(
-            """
-            SELECT nickname FROM user_nicknames
-            WHERE user_hash = ?
-            ORDER BY month_year DESC LIMIT 1
-            """,
-            (user_hash,),
-        )
-        row = cursor.fetchone()
-    return row[0] if row else None

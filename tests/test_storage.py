@@ -5,6 +5,7 @@ from ukrainability_telegram_bot.storage import (
     PLAINTEXT_COLUMNS,
     RESPONSE_COLUMNS,
     get_all_used_nicknames,
+    get_latest_user_nickname,
     get_user_nickname,
     initialize_database,
     insert_response,
@@ -35,6 +36,7 @@ def test_nickname_persistence_is_month_scoped(tmp_path):
 
     assert get_user_nickname(db_file, "hash-1", "2026-05") == "BrightFox07"
     assert get_user_nickname(db_file, "hash-1", "2026-06") == "WiseWolf08"
+    assert get_latest_user_nickname(db_file, "hash-1") == "WiseWolf08"
     assert get_all_used_nicknames(db_file) == {"BrightFox07", "WiseWolf08"}
 
 

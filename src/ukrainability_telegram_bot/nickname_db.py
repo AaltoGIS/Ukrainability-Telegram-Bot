@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import datetime
-import sqlite3
 import random
 
 from .app import AppContext
 from . import nicknames
 from .pseudonym import hash_user_id
 from .storage import get_all_used_nicknames as fetch_all_used_nicknames
+from .storage import get_latest_user_nickname as fetch_latest_user_nickname
 from .storage import save_user_nickname as persist_user_nickname
 
 
@@ -18,17 +18,7 @@ def get_user_hash(ctx: AppContext, user_id: int) -> str:
 
 
 def get_user_nickname(ctx: AppContext, user_hash: str) -> str | None:
-    with sqlite3.connect(ctx.config.db_file, check_same_thread=False) as conn:
-        cursor = conn.execute(
-            """
-            SELECT nickname FROM user_nicknames
-            WHERE user_hash = ?
-            ORDER BY month_year DESC LIMIT 1
-            """,
-            (user_hash,),
-        )
-        result = cursor.fetchone()
-    return result[0] if result else None
+    return fetch_latest_user_nickname(ctx.config.db_file, user_hash)
 
 
 def get_all_used_nicknames(ctx: AppContext) -> set[str]:
