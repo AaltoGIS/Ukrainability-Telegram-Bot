@@ -137,6 +137,8 @@ src/ukrainability_telegram_bot/
   security.py   # Fernet helpers
   sessions.py   # thread-safe user/session/message-id state
   storage.py    # SQLite helpers
+  survey/
+    persistence.py # response row building/encryption/insertion
   telegram_io.py # Telegram send/edit/callback helpers
   keyboards.py  # keyboard construction helper
 tests/          # pytest suite

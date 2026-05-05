@@ -51,6 +51,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 | Original | Current |
 |---|---|
 | `logging.FileHandler('flow_control.log')` — unbounded log growth. | `RotatingFileHandler` with `UKRAINABILITY_LOG_MAX_BYTES` / `UKRAINABILITY_LOG_BACKUP_COUNT` (defaults 5 MB × 5). |
+| Encrypted response columns still left operational metadata visible through SQLite row order and timestamps. | Preserved for compatibility: `responses.id` and `responses.timestamp` remain plaintext metadata, while all other response columns are encrypted. Treat DB access as sensitive even without the Fernet key. |
 | `cleanup_scheduler` ran `while True: cleanup(); time.sleep(24*60*60)` — no graceful shutdown, restart hammered cleanup, exception backoff stacked with the next normal sleep. | `cleanup.py` owns `cleanup_stop_event` + `cleanup_thread_lock` and exposes `start_cleanup_scheduler` / `stop_cleanup_scheduler`. The loop runs cleanup, then `wait()`s; exception branch uses its own bounded `wait()` with explicit `continue` so back-offs never stack. Interval and retention configurable. |
 | Voice retention hard-coded to 30 days. | Configurable via `UKRAINABILITY_VOICE_RETENTION_DAYS`. |
 | Cleanup interval hard-coded. | Configurable via `UKRAINABILITY_CLEANUP_INTERVAL_SECONDS`. |
@@ -59,7 +60,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, and session globals — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, and `sessions.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, and `survey/persistence.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by `bot.py`. |
 
 ## What is intentionally unchanged
@@ -72,7 +73,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Splitting the remaining `bot.py` responsibilities into `survey/persistence.py` and per-question modules under `survey/questions/` — see `REVIEW_FIXES.md` and the v4 refactor plan.
+- Splitting the remaining `bot.py` responsibilities into per-question modules under `survey/questions/` — see `REVIEW_FIXES.md` and the v4 refactor plan.
 - Survey-flow integration tests (drive a callback chain through a mocked `TeleBot`).
 - Path-level voice tests (directory creation, filename generation, encrypted-file write/read on disk).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.

@@ -10,7 +10,6 @@ startup work behind `configure_runtime()` and `run()`.
 """
 
 # Imports and configuration
-import copy
 import os
 import logging
 import time
@@ -28,6 +27,11 @@ from .pseudonym import hash_user_id
 from . import runtime as runtime_module
 from .runtime import flow_logger
 from .storage import initialize_database as initialize_storage_database
+from .survey.persistence import (
+    DatabaseSaveError,
+    EncryptionUnavailableError,
+    save_response,
+)
 from . import telegram_io as telegram_io_module
 from .telegram_io import (
     callback_index,
@@ -4766,11 +4770,9 @@ def handle_text_messages(m):
 # Updated save_data_and_restart function with better error handling for concurrent use
 def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
     try:
-        # Get user data with thread-safe access
-        with _session_lock():
-            user_data_copy = copy.deepcopy(_user_data().get(user_id, {}))
-            user_profile_copy = copy.deepcopy(_user_profiles().get(user_id, {}))
-            user_consent = user_profile_copy.get('consent', False)
+        ctx = _ctx()
+        user_profile_copy = ctx.sessions.profile_snapshot(user_id)
+        user_consent = user_profile_copy.get('consent', False)
 
         if not user_consent:
             flow_logger.info("Consent denied; skipping response row insert")
@@ -4782,90 +4784,22 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
                     start_param='restart')
             return True
 
-        consent_str = "True"
-        user_hash = get_user_hash(user_id)
-        nickname = get_user_nickname(user_hash)
-        month_year = datetime.datetime.now().strftime("%Y-%m")
-        if not nickname:
-            nickname = generate_unique_nickname()
-            save_user_nickname(user_hash, nickname)
+        def nickname_provider():
+            user_hash = get_user_hash(user_id)
+            nickname = get_user_nickname(user_hash)
+            if not nickname:
+                nickname = generate_unique_nickname()
+                save_user_nickname(user_hash, nickname)
+            return nickname
 
-        # Ensure kremenchuk is loaded from profiles if needed
-        kremenchuk_value = user_data_copy.get('kremenchuk', '')
-        if not kremenchuk_value:
-            kremenchuk_value = user_profile_copy.get('kremenchuk', '')
-
-        # User consented. Create the data dictionary safely
-        location_data = user_data_copy.get('location', {})
-        venue_address = location_data.get('venue_address', '')
-
-        # Process complex fields safely
-        purpose_list = user_data_copy.get('purpose_visit', [])
-        if isinstance(purpose_list, list):
-            purpose_str = ';'.join(purpose_list)
-        else:
-            purpose_str = str(purpose_list)
-
-        changes_detail_list = user_data_copy.get('changes_detail', [])
-        if isinstance(changes_detail_list, list):
-            changes_detail_str = ';'.join(changes_detail_list)
-        else:
-            changes_detail_str = str(changes_detail_list)
-
-        wishlist_list = user_data_copy.get('wishlist', [])
-        if isinstance(wishlist_list, list):
-            wishlist_str = ';'.join(wishlist_list)
-        else:
-            wishlist_str = str(wishlist_list) if wishlist_list else ''
-
-        visitor_type_list = user_data_copy.get('visitor_type', [])
-        if isinstance(visitor_type_list, list):
-            visitor_type_str = ';'.join(visitor_type_list)
-        else:
-            visitor_type_str = str(visitor_type_list)
-
-        accessibility_list = user_data_copy.get('accessibility', [])
-        if isinstance(accessibility_list, list):
-            accessibility_str = ';'.join(accessibility_list)
-        else:
-            accessibility_str = str(accessibility_list) if accessibility_list else ''
-
-        # Format kremenchuk_str based on type
-        if isinstance(kremenchuk_value, list):
-            kremenchuk_str = ';'.join(kremenchuk_value)
-        else:
-            kremenchuk_str = str(kremenchuk_value)
-
-        data = {
-            'nickname': nickname,
-            'month_year': month_year,
-            'latitude': str(location_data.get('latitude', '')),
-            'longitude': str(location_data.get('longitude', '')),
-            'venue_title': location_data.get('venue_title', ''),
-            'venue_address': venue_address,
-            'enjoyment': user_data_copy.get('enjoyment', ''),
-            'purpose_visit': purpose_str,
-            'regularity': user_data_copy.get('regularity', ''),
-            'noticed_changes': user_data_copy.get('noticed_changes', ''),
-            'changes_detail': changes_detail_str,
-            'wishlist': wishlist_str,
-            'kremenchuk': kremenchuk_str,
-            'description': user_data_copy.get('description', ''),
-            'voice_submitted': user_data_copy.get('voice_submitted', ''),
-            'age': user_data_copy.get('age', ''),
-            'gender': user_data_copy.get('gender', ''),
-            'occupation': user_data_copy.get('occupation', ''),
-            'income': user_data_copy.get('income', ''),
-            'language': language,
-            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'visitor_type': visitor_type_str,
-            'duration_visit': user_data_copy.get('duration_visit', ''),
-            'accessibility': accessibility_str,
-            'consent': consent_str
-        }
-
-        # Check for _fernet() availability before attempting encryption
-        if _fernet() is None:
+        try:
+            save_response(
+                ctx,
+                user_id,
+                language,
+                nickname_provider=nickname_provider,
+            )
+        except EncryptionUnavailableError:
             flow_logger.error("Encryption not initialized. Cannot save data securely.")
             safe_send_message(
                 chat_id,
@@ -4874,95 +4808,14 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
                 "Сталася помилка безпеки. Ваші дані не могли бути збережені надійно. Зверніться до служби підтримки."
             )
             return False
-
-        # Fields to encrypt
-        fields_to_encrypt = [
-            'nickname', 'month_year', 'latitude', 'longitude', 'venue_title', 
-            'venue_address', 'enjoyment', 'purpose_visit', 'regularity', 
-            'noticed_changes', 'changes_detail', 'wishlist', 'kremenchuk', 
-            'description', 'voice_submitted', 'age', 'gender', 'occupation', 
-            'income', 'language', 'visitor_type', 'duration_visit', 
-            'accessibility', 'consent'
-        ]
-
-        # Enhanced encryption with error tracking
-        encryption_errors = []
-        for field in fields_to_encrypt:
-            try:
-                if data[field]:
-                    # Perform encryption
-                    encrypted_value = _fernet().encrypt(data[field].encode()).decode()
-                    data[field] = encrypted_value
-                else:
-                    data[field] = ''
-            except Exception as e:
-                error_msg = f"Error encrypting {field}: {e}"
-                flow_logger.error(error_msg)
-                encryption_errors.append(field)
-                data[field] = ''  # Use empty string as fallback
-
-        # Alert if any encryption errors occurred
-        if encryption_errors:
-            flow_logger.error(f"Failed to encrypt fields: {encryption_errors}")
-
-        # Use short-lived SQLite connections with retry for concurrent use.
-        db_connection_attempts = 0
-        max_db_attempts = 3
-        
-        while db_connection_attempts < max_db_attempts:
-            db_connection_attempts += 1
-            try:
-                with sqlite3.connect(_db_file(), check_same_thread=False) as conn:
-                    conn.execute("PRAGMA busy_timeout=5000")
-                    insert_query = '''
-                        INSERT INTO responses (
-                            nickname, month_year, latitude, longitude, venue_title, venue_address,
-                            enjoyment, purpose_visit, regularity, noticed_changes,
-                            changes_detail, wishlist, kremenchuk, description,
-                            voice_submitted, age, gender, occupation, income, language, timestamp,
-                            visitor_type, duration_visit, accessibility, consent
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    '''
-
-                    # Prepare the tuple in the exact order
-                    values_tuple = (
-                        data['nickname'], data['month_year'], data['latitude'], data['longitude'], 
-                        data['venue_title'], data['venue_address'], data['enjoyment'], 
-                        data['purpose_visit'], data['regularity'], data['noticed_changes'],
-                        data['changes_detail'], data['wishlist'], data['kremenchuk'], 
-                        data['description'], data['voice_submitted'], data['age'],
-                        data['gender'], data['occupation'], data['income'], data['language'], 
-                        data['timestamp'], data['visitor_type'], data['duration_visit'], 
-                        data['accessibility'], data['consent']
-                    )
-
-                    cursor = conn.execute(insert_query, values_tuple)
-
-                    # Verify row was inserted
-                    last_id = cursor.lastrowid
-                    flow_logger.info(f"Inserted row ID: {last_id}")
-                    
-                    # Database operation successful, exit the retry loop
-                    break
-                    
-            except sqlite3.Error as db_error:
-                flow_logger.error(f"Database error attempt {db_connection_attempts}: {db_error}")
-                
-                if db_connection_attempts < max_db_attempts:
-                    # Exponential backoff for database retries
-                    retry_delay = 2 ** (db_connection_attempts - 1)
-                    flow_logger.info(f"Retrying database operation in {retry_delay} seconds")
-                    time.sleep(retry_delay)
-                else:
-                    # Last attempt failed
-                    flow_logger.error("All database attempts failed, cannot save data")
-                    safe_send_message(
-                        chat_id,
-                        "A database error occurred. Your data could not be saved. Please try again later."
-                        if language == 'en' else
-                        "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше."
-                    )
-                    return False
+        except DatabaseSaveError:
+            safe_send_message(
+                chat_id,
+                "A database error occurred. Your data could not be saved. Please try again later."
+                if language == 'en' else
+                "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше."
+            )
+            return False
 
         # Clear current experience data using thread-safe method
         with _session_lock():
