@@ -266,5 +266,5 @@ python3 -m build
 
 ## Maintainers
 
-- Oleksandr Karasov, GIST Lab, Aalto University
+- Oleksandr Karasov (creator of the tool), GIST Lab, Aalto University
 - Henrikki Tenkanen, GIST Lab, Aalto University
