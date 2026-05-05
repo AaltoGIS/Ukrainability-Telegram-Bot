@@ -60,7 +60,7 @@ def test_config_warns_about_unbalanced_quotes_in_credentials_file(tmp_path, capl
         encoding="utf-8",
     )
 
-    AppConfig.from_env(
+    config = AppConfig.from_env(
         {
             "UKRAINABILITY_CREDENTIALS_FILE": str(credentials),
             "UKRAINABILITY_STORAGE_DIR": str(tmp_path / "storage"),
@@ -69,6 +69,7 @@ def test_config_warns_about_unbalanced_quotes_in_credentials_file(tmp_path, capl
     )
 
     assert "contains unbalanced quotes" in caplog.text
+    assert config.telegram_bot_token == '"legacy-token'
 
 
 def test_config_supports_key_rotation_list(tmp_path):

@@ -48,18 +48,27 @@ def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp
             bot.user_profiles.pop(user_id, None)
 
 
-def test_cleanup_scheduler_waits_before_first_cleanup(monkeypatch):
+def test_cleanup_scheduler_runs_once_at_startup_then_waits(monkeypatch):
     calls = []
+    first_pass = threading.Event()
+
     monkeypatch.setattr(bot, "cleanup_interval_seconds", 0.05)
-    monkeypatch.setattr(bot, "cleanup_stale_sessions", lambda hours_inactive: calls.append("sessions"))
+
+    def cleanup_sessions(hours_inactive):
+        calls.append("sessions")
+        first_pass.set()
+
+    monkeypatch.setattr(bot, "cleanup_stale_sessions", cleanup_sessions)
     monkeypatch.setattr(bot, "cleanup_old_voice_messages", lambda days_to_keep: calls.append("voice"))
 
     bot.cleanup_stop_event.clear()
     thread = threading.Thread(target=bot.cleanup_scheduler)
     thread.start()
     try:
+        assert first_pass.wait(timeout=1)
+        assert calls == ["sessions", "voice"]
         time.sleep(0.01)
-        assert calls == []
+        assert calls == ["sessions", "voice"]
     finally:
         bot.cleanup_stop_event.set()
         thread.join(timeout=1)

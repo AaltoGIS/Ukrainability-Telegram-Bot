@@ -5340,20 +5340,25 @@ def cleanup_old_voice_messages(days_to_keep=None):
 
 
 cleanup_stop_event = threading.Event()
+cleanup_thread_lock = threading.Lock()
 
 
 def cleanup_scheduler():
     """Periodically runs cleanup tasks in the background."""
+    def run_cleanup_pass():
+        cleanup_stale_sessions(hours_inactive=48)
+        cleanup_old_voice_messages(days_to_keep=voice_retention_days)
+
     while not cleanup_stop_event.is_set():
-        if cleanup_stop_event.wait(cleanup_interval_seconds):
-            break
         try:
-            # Run cleanup tasks
-            cleanup_stale_sessions(hours_inactive=48)
-            cleanup_old_voice_messages(days_to_keep=voice_retention_days)
+            run_cleanup_pass()
         except Exception as e:
             flow_logger.exception(f"Error in cleanup scheduler: {e}")
-            cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60))
+            if cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60)):
+                break
+
+        if cleanup_stop_event.wait(cleanup_interval_seconds):
+            break
 
 
 cleanup_thread = None
@@ -5361,18 +5366,21 @@ cleanup_thread = None
 
 def start_cleanup_scheduler():
     global cleanup_thread
-    if cleanup_thread is None or not cleanup_thread.is_alive():
-        cleanup_stop_event.clear()
-        cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
-        cleanup_thread.start()
+    with cleanup_thread_lock:
+        if cleanup_thread is None or not cleanup_thread.is_alive():
+            cleanup_stop_event.clear()
+            cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
+            cleanup_thread.start()
     return cleanup_thread
 
 
 def stop_cleanup_scheduler(timeout=5):
     """Signal the background cleanup thread to stop and wait briefly."""
-    cleanup_stop_event.set()
-    if cleanup_thread is not None and cleanup_thread.is_alive():
-        cleanup_thread.join(timeout=timeout)
+    with cleanup_thread_lock:
+        cleanup_stop_event.set()
+        thread = cleanup_thread
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=timeout)
 
 
 # Update the start_polling_with_retry function for better error handling

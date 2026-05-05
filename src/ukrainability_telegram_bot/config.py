@@ -127,6 +127,8 @@ def _read_export_file(path: Path) -> Mapping[str, str]:
         stripped_value = value.strip()
         if _has_unbalanced_quotes(stripped_value):
             logger.warning("Credentials value for %s contains unbalanced quotes", key.strip())
+            values[key.strip()] = stripped_value
+            continue
         values[key.strip()] = stripped_value.strip("\"'")
 
     return values
