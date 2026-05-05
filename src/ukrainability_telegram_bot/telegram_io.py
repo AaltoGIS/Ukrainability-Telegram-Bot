@@ -246,19 +246,18 @@ def handle_callback_error(
 def clear_callback_state(ctx: AppContext, user_id: int) -> None:
     """Clear transient callback state for a user after a handler error."""
 
-    with ctx.sessions.lock:
-        session = ctx.sessions.data.get(user_id)
-        if not session:
-            return
-        for key in list(session):
-            if (
-                key.startswith("temp_")
-                or key == "awaiting_multiple_select"
-                or key == "current_question"
-                or key == "modifying"
-                or key == "modifying_field"
-            ):
-                session.pop(key, None)
+    ctx.sessions.clear_transient_keys(
+        user_id,
+        prefixes=frozenset({"temp_"}),
+        exact_keys=frozenset(
+            {
+                "awaiting_multiple_select",
+                "current_question",
+                "modifying",
+                "modifying_field",
+            }
+        ),
+    )
 
 
 def safe_answer_callback(ctx: AppContext, call: Any, message: str) -> None:
