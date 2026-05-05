@@ -16,16 +16,26 @@ modernization commit.
 ## Correctness Fixes
 
 - Made session recovery, stale-session cleanup, and activity timestamp updates use `user_data_lock`.
+- Consolidated `user_data` and `user_profiles` under the same reentrant lock to avoid lock-order inversions.
 - Consolidated schema creation by making the runtime call `storage.initialize_database()`.
-- Added rollback before returning SQLite connections to the pool.
+- Removed the runtime SQLite connection pool and use per-call SQLite connections instead.
 - Replaced string parsing of Telegram `retry_after` with structured `result_json` / `result` lookup.
+- Coerced `retry_after` values to floats and capped waits at 60 seconds.
 - Made `safe_send_message()` raise explicitly if the retry loop exits unexpectedly.
-- Added callback parsing helpers and applied them to consent, purpose, duration, and regularity handlers.
+- Added callback parsing helpers and applied them to all survey callback handlers that parse indexed choices.
 - Consolidated survey text so `bot.py` imports the live dictionary from `messages.py`.
+- Skipped response-row insertion when consent is denied instead of writing a mostly empty row.
+- Registered next-step handlers by chat ID before sending prompts that expect a free-text/location/voice reply.
+- Audited HTML-mode sends in `bot.py` and escaped interpolated nicknames in addition to existing escaped user-response echoes.
+- Deleted the unused `state.py` helper and its tests so there is only one in-memory session system.
+- Removed leftover notebook `# In[...]` markers from the runtime module.
+
+## Operations Fixes
+
+- Switched bot and flow logs to `RotatingFileHandler` with configurable size and backup count.
+- Added configurable encrypted voice-message retention and cleanup interval environment variables.
+- Replaced the hard-coded daily cleanup `time.sleep()` loop with a waitable cleanup event and configurable cadence.
 
 ## Remaining Review Items
 
 - The larger architecture split into `survey/flow.py`, `telegram_io.py`, and an app context remains future work.
-- Several callback handlers still need migration to the new callback parsing helpers.
-- `register_next_step_handler_by_chat_id`, full HTML-output audit, rotating log handlers, configurable voice retention, and scheduler replacement remain open.
-- The old connection-pool design is still present, though dirty-connection reuse is reduced by rollback.

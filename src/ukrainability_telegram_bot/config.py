@@ -29,6 +29,10 @@ class AppConfig:
     credentials_file: Optional[Path] = Path(DEFAULT_CREDENTIALS_FILE)
     bot_errors_log: str = "bot_errors.log"
     flow_control_log: str = "flow_control.log"
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
+    voice_retention_days: int = 30
+    cleanup_interval_seconds: int = 24 * 60 * 60
 
     @property
     def db_file(self) -> Path:
@@ -92,6 +96,12 @@ class AppConfig:
             credentials_file=credentials_file,
             bot_errors_log=env.get("UKRAINABILITY_BOT_ERRORS_LOG", "bot_errors.log"),
             flow_control_log=env.get("UKRAINABILITY_FLOW_CONTROL_LOG", "flow_control.log"),
+            log_max_bytes=_int_env(env, "UKRAINABILITY_LOG_MAX_BYTES", 5_000_000),
+            log_backup_count=_int_env(env, "UKRAINABILITY_LOG_BACKUP_COUNT", 5),
+            voice_retention_days=_int_env(env, "UKRAINABILITY_VOICE_RETENTION_DAYS", 30),
+            cleanup_interval_seconds=_int_env(
+                env, "UKRAINABILITY_CLEANUP_INTERVAL_SECONDS", 24 * 60 * 60
+            ),
         )
 
 
@@ -119,3 +129,13 @@ def _read_export_file(path: Path) -> Mapping[str, str]:
 
 def _split_keys(value: str) -> tuple[str, ...]:
     return tuple(key.strip() for key in value.split(",") if key.strip())
+
+
+def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
+    value = env.get(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{key} must be an integer") from exc

@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 
 
-_SAFE_NICKNAME_RE = re.compile(r"[A-Za-z0-9 ]+")
+_SAFE_NICKNAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ]*")
 
 
 def safe_nickname_directory(base_dir: str | Path, nickname: str) -> Path:

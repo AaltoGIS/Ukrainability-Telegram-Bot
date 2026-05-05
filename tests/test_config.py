@@ -11,6 +11,10 @@ def test_config_loads_from_environment(tmp_path):
         "ENCRYPTION_KEY": "fernet-key",
         "UKRAINABILITY_USER_HASH_SALT": "hash-salt",
         "UKRAINABILITY_STORAGE_DIR": str(tmp_path),
+        "UKRAINABILITY_LOG_MAX_BYTES": "12345",
+        "UKRAINABILITY_LOG_BACKUP_COUNT": "7",
+        "UKRAINABILITY_VOICE_RETENTION_DAYS": "14",
+        "UKRAINABILITY_CLEANUP_INTERVAL_SECONDS": "300",
     }
 
     config = AppConfig.from_env(env, load_dotenv_file=False)
@@ -21,6 +25,10 @@ def test_config_loads_from_environment(tmp_path):
     assert config.storage_dir == tmp_path
     assert config.db_file == tmp_path / "responses_kremenchuk.db"
     assert config.voice_files_dir == tmp_path / "voice_messages"
+    assert config.log_max_bytes == 12345
+    assert config.log_backup_count == 7
+    assert config.voice_retention_days == 14
+    assert config.cleanup_interval_seconds == 300
 
 
 def test_config_loads_legacy_credentials_file(tmp_path):
@@ -65,6 +73,20 @@ def test_config_reports_missing_required_values(tmp_path):
         AppConfig.from_env(
             {
                 "UKRAINABILITY_CREDENTIALS_FILE": str(tmp_path / "missing"),
+            },
+            load_dotenv_file=False,
+        )
+
+
+def test_config_rejects_non_integer_runtime_options(tmp_path):
+    with pytest.raises(ValueError, match="UKRAINABILITY_LOG_MAX_BYTES must be an integer"):
+        AppConfig.from_env(
+            {
+                "TELEGRAM_BOT_TOKEN": "telegram-token",
+                "ENCRYPTION_KEY": "fernet-key",
+                "UKRAINABILITY_USER_HASH_SALT": "hash-salt",
+                "UKRAINABILITY_STORAGE_DIR": str(tmp_path),
+                "UKRAINABILITY_LOG_MAX_BYTES": "large",
             },
             load_dotenv_file=False,
         )

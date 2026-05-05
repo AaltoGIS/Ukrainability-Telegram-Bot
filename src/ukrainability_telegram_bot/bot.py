@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
 
 
 """Runtime Telegram bot implementation.
@@ -20,9 +19,9 @@ import threading
 import sqlite3
 import random
 import requests  # Add this line
-import queue
 import sys
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
 import telebot
 from telebot import types
@@ -70,18 +69,32 @@ class HandlerRegistry:
 
 
 def _configure_logging(config):
-    logging.basicConfig(
-        filename=config.bot_errors_log,
-        level=logging.ERROR,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    root_handler = RotatingFileHandler(
+        config.bot_errors_log,
+        maxBytes=config.log_max_bytes,
+        backupCount=config.log_backup_count,
     )
+    root_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.ERROR)
+    if not any(
+        isinstance(existing, RotatingFileHandler)
+        and getattr(existing, "baseFilename", None).endswith(config.bot_errors_log)
+        for existing in root_logger.handlers
+    ):
+        root_logger.addHandler(root_handler)
 
     if not any(
-        isinstance(existing, logging.FileHandler)
+        isinstance(existing, RotatingFileHandler)
         and getattr(existing, "baseFilename", None).endswith(config.flow_control_log)
         for existing in flow_logger.handlers
     ):
-        handler = logging.FileHandler(config.flow_control_log)
+        handler = RotatingFileHandler(
+            config.flow_control_log,
+            maxBytes=config.log_max_bytes,
+            backupCount=config.log_backup_count,
+        )
         handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(levelname)s - %(message)s'))
         flow_logger.addHandler(handler)
@@ -91,7 +104,7 @@ def _configure_logging(config):
 def configure_runtime(config):
     """Configure global legacy runtime objects for one bot process."""
 
-    global token, local_storage_dir, voice_files_dir, db_file, fernet, bot, bot_username, user_hash_salt
+    global token, local_storage_dir, voice_files_dir, db_file, fernet, bot, bot_username, user_hash_salt, voice_retention_days, cleanup_interval_seconds
 
     _configure_logging(config)
     token = config.telegram_bot_token
@@ -99,6 +112,8 @@ def configure_runtime(config):
     voice_files_dir = str(config.voice_files_dir)
     db_file = str(config.db_file)
     user_hash_salt = config.user_hash_salt
+    voice_retention_days = config.voice_retention_days
+    cleanup_interval_seconds = config.cleanup_interval_seconds
 
     os.makedirs(local_storage_dir, exist_ok=True)
     os.makedirs(voice_files_dir, exist_ok=True)
@@ -124,6 +139,8 @@ token = None
 local_storage_dir = DEFAULT_STORAGE_DIR
 voice_files_dir = os.path.join(local_storage_dir, 'voice_messages')
 user_hash_salt = None
+voice_retention_days = 30
+cleanup_interval_seconds = 24 * 60 * 60
 
 
 # Initialize bot
@@ -134,8 +151,8 @@ bot_username = None
 user_data = {}
 user_profiles = {}
 # Add at the top with other global variables
-user_data_lock = threading.RLock()  # Reentrant lock for user data
-user_profiles_lock = threading.RLock()  # Reentrant lock for user profiles
+user_data_lock = threading.RLock()  # Reentrant lock for all in-memory user session data
+user_profiles_lock = user_data_lock  # Keep a single lock for user_data and user_profiles.
 
 
 # Database setup
@@ -154,17 +171,23 @@ def get_user_hash(user_id):
 
 
 def telegram_retry_after(error, default=3):
+    def capped(value):
+        try:
+            return min(float(value), 60.0)
+        except (TypeError, ValueError):
+            return min(float(default), 60.0)
+
     result_json = getattr(error, "result_json", None)
     if isinstance(result_json, dict):
         retry_after = result_json.get("parameters", {}).get("retry_after")
         if retry_after is not None:
-            return retry_after
+            return capped(retry_after)
     result = getattr(error, "result", None)
     if isinstance(result, dict):
         retry_after = result.get("parameters", {}).get("retry_after")
         if retry_after is not None:
-            return retry_after
-    return default
+            return capped(retry_after)
+    return capped(default)
 
 
 def redacted_coordinate(value):
@@ -229,13 +252,11 @@ nouns = [
 
 
 
-# In[2]:
 
 
 # Messages dictionary
 
 
-# In[3]:
 
 
 # Helper functions
@@ -256,13 +277,9 @@ def generate_unique_nickname():
 
 
 def get_all_used_nicknames():
-    with db_lock:
-        conn = sqlite3.connect(db_file, check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute('SELECT DISTINCT nickname FROM user_nicknames')
-        results = cursor.fetchall()
-        conn.close()
-        return set([row[0] for row in results])
+    with sqlite3.connect(db_file, check_same_thread=False) as conn:
+        cursor = conn.execute('SELECT DISTINCT nickname FROM user_nicknames')
+        return {row[0] for row in cursor.fetchall()}
 
 
 def create_inline_keyboard(options, prefix, single_select=False):
@@ -301,19 +318,14 @@ def create_inline_keyboard(options, prefix, single_select=False):
 
 
 def get_user_nickname(user_hash):
-    with db_lock:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('''
-                SELECT nickname FROM user_nicknames
-                WHERE user_hash = ?
-                ORDER BY month_year DESC LIMIT 1
-            ''', (user_hash,))
-            result = cursor.fetchone()
-            return result[0] if result else None
-        finally:
-            return_db_connection(conn)
+    with sqlite3.connect(db_file, check_same_thread=False) as conn:
+        cursor = conn.execute('''
+            SELECT nickname FROM user_nicknames
+            WHERE user_hash = ?
+            ORDER BY month_year DESC LIMIT 1
+        ''', (user_hash,))
+        result = cursor.fetchone()
+        return result[0] if result else None
 
 # Add to the global variables section
 # For tracking message IDs for each user
@@ -474,7 +486,7 @@ def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_ret
             )
         except ApiTelegramException as e:
             # Handle rate limiting
-            if "429" in str(e) or "too many requests" in str(e).lower():
+            if getattr(e, "error_code", None) == 429:
                 retry_after = telegram_retry_after(e, default=3)
                 flow_logger.warning(f"Rate limited, waiting {retry_after}s before retry {attempt+1}/{max_retries}")
                 time.sleep(retry_after)
@@ -500,20 +512,25 @@ def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_ret
     raise RuntimeError("Failed to send message after retry loop")
 
 
+def send_next_step_prompt(chat_id, text, handler, reply_markup=None, parse_mode=None):
+    """Register the next-step handler before sending the prompt."""
+    bot.register_next_step_handler_by_chat_id(chat_id, handler)
+    return safe_send_message(
+        chat_id,
+        text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+    )
+
+
 def save_user_nickname(user_hash, nickname):
     month_year = datetime.datetime.now().strftime('%Y-%m')
-    with db_lock:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('''
-                INSERT OR IGNORE INTO user_nicknames
-                (user_hash, nickname, month_year)
-                VALUES (?, ?, ?)
-            ''', (user_hash, nickname, month_year))
-            conn.commit()
-        finally:
-            return_db_connection(conn)
+    with sqlite3.connect(db_file, check_same_thread=False) as conn:
+        conn.execute('''
+            INSERT OR IGNORE INTO user_nicknames
+            (user_hash, nickname, month_year)
+            VALUES (?, ?, ?)
+        ''', (user_hash, nickname, month_year))
 
 
 def escape_html(text):
@@ -792,23 +809,16 @@ def update_activity_timestamp(user_id):
         else:
             # If user doesn't exist in user_data, initialize it
             user_data[user_id] = {'last_activity_time': time.time()}
-# In[4]:
 
 
 # Database functions
 def initialize_database():
-    with db_lock:
-        try:
-            initialize_storage_database(Path(db_file))
-            flow_logger.info("Database initialized successfully")
-            
-            # Check if connection pool is empty before initializing
-            if db_pool.empty():
-                initialize_connection_pool()
-
-        except Exception as e:
-            logging.exception(f"Error initializing responses database: {e}")
-            raise e
+    try:
+        initialize_storage_database(Path(db_file))
+        flow_logger.info("Database initialized successfully")
+    except Exception as e:
+        logging.exception(f"Error initializing responses database: {e}")
+        raise e
 
 def hide_keyboard(chat_id):
     """
@@ -830,7 +840,6 @@ def hide_keyboard(chat_id):
         # Just log, don't interrupt flow if this fails
         logging.warning(f"Failed to hide keyboard: {e}")
 
-# In[5]:
 
 
 # Start and restart handlers
@@ -906,7 +915,7 @@ def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
                     # given message with Continue button
                     user_profiles[user_id]['consent'] = True
                     consent_message = messages[language]['consent_given'].format(
-                        nickname=f"<b>{nickname}</b>")
+                        nickname=f"<b>{escape_html(nickname)}</b>")
                     inline_kb = types.InlineKeyboardMarkup()
                     continue_text = "Continue" if language == 'en' else "Продовжити"
                     continue_button = types.InlineKeyboardButton(
@@ -922,7 +931,7 @@ def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
                     # consent true, show consent given message with Continue button as well
                     # This ensures consistency so user must press Continue
                     consent_message = messages[language]['consent_given'].format(
-                        nickname=f"<b>{nickname}</b>")
+                        nickname=f"<b>{escape_html(nickname)}</b>")
                     inline_kb = types.InlineKeyboardMarkup()
                     continue_text = "Continue" if language == 'en' else "Продовжити"
                     continue_button = types.InlineKeyboardButton(
@@ -969,7 +978,6 @@ def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
         bot.send_message(chat_id, "An error occurred. Please try again later.")
 
 
-# In[6]:
 
 
 # Language and consent handlers
@@ -1018,9 +1026,10 @@ def handle_language_selection(call):
                 # Create a cleaner transition
                 time.sleep(0.5)  # Small delay for better UX
                 # Send location request directly
-                msg = bot.send_message(
-                    chat_id, messages[language]['send_location'])
-                bot.register_next_step_handler(msg, handle_location_step)
+                send_next_step_prompt(
+                    chat_id,
+                    messages[language]['send_location'],
+                    handle_location_step)
             else:
                 # User previously declined, ask again
                 options = messages[language]['consent_options']
@@ -1091,7 +1100,7 @@ def handle_consent(call):
             if consent_response == consent_options[0]:  # User agrees
                 nickname = user_data[user_id]['nickname']
                 consent_message = messages[language]['consent_given'].format(
-                    nickname=f"<b>{nickname}</b>")
+                    nickname=f"<b>{escape_html(nickname)}</b>")
                 user_profiles.setdefault(user_id, {})['consent'] = True
 
                 # Show "Continue" button after consent given with a loading
@@ -1156,14 +1165,15 @@ def handle_post_consent_continue(call):
             reply_markup=None)
 
         # Now send the location prompt
-        msg = bot.send_message(chat_id, messages[language]['send_location'])
-        bot.register_next_step_handler(msg, handle_location_step)
+        send_next_step_prompt(
+            chat_id,
+            messages[language]['send_location'],
+            handle_location_step)
     except Exception as e:
         logging.exception(f"Error in handle_post_consent_continue: {e}")
         bot.send_message(chat_id, "An error occurred. Please try again later.")
 
 
-# In[7]:
 
 
 def handle_location_step(message):
@@ -1276,10 +1286,10 @@ def handle_location_step(message):
                     send_welcome(message)
                     return
                 else:
+                    bot.register_next_step_handler_by_chat_id(
+                        chat_id, handle_location_step)
                     bot.send_message(
                         chat_id, messages[language]['please_send_location'])
-                    bot.register_next_step_handler(
-                        message, handle_location_step)
                     return
 
             flow_logger.info("Text location received; content redacted")
@@ -1306,9 +1316,10 @@ def handle_location_step(message):
             ask_purpose_visit(chat_id, user_id, language)
 
         else:
-            msg = bot.send_message(
-                chat_id, messages[language]['please_send_location'])
-            bot.register_next_step_handler(msg, handle_location_step)
+            send_next_step_prompt(
+                chat_id,
+                messages[language]['please_send_location'],
+                handle_location_step)
     except Exception as e:
         logging.exception(f"Error in handle_location_step: {e}")
         try:
@@ -1324,7 +1335,6 @@ def handle_location_step(message):
                 message,
                 "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.")
 
-# In[8]:
 
 
 # Purpose visit handler
@@ -1380,7 +1390,7 @@ def handle_purpose_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = get_user_data(user_id, 'language')
-        data = call.data.split('_')[1]
+        data = callback_suffix(call.data, "purpose")
 
         if data == 'done':
             purpose_visit = get_user_data(user_id, 'purpose_visit', [])
@@ -1516,7 +1526,6 @@ def update_purpose_selection_keyboard(message, user_id, language):
     except Exception as e:
         logging.exception(f"Error in update_purpose_selection_keyboard: {e}")
 
-# In[9]:
 
 
 # Enjoyment and visitor type handlers
@@ -1576,49 +1585,49 @@ def handle_enjoyment_selection(call):
 
         language = user_data[user_id]['language']
         options = messages[language]['enjoyment_options']
-        idx = int(call.data[len('enjoyment_'):])
+        try:
+            idx = callback_index(call.data, "enjoyment", options)
+        except (ValueError, IndexError):
+            safe_answer_callback(call, messages[language]['invalid_rating'])
+            return
 
-        if 0 <= idx < len(options):
-            enjoyment = options[idx]
+        enjoyment = options[idx]
 
-            # Store temporarily, don't commit until confirmed
-            user_data[user_id]['temp_enjoyment'] = enjoyment
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_enjoyment'] = enjoyment
 
-            # Update keyboard to show selection and add Confirm button
-            inline_kb = types.InlineKeyboardMarkup(row_width=1)
-            for i, option in enumerate(options):
-                # Mark the selected option
-                text = f"✅ {option}" if i == idx else option
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=text,
-                        callback_data=f"enjoyment_{i}"))
-
-            # Add Confirm/Done button
-            done_text = messages[language]['done_button']
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
             inline_kb.add(
                 types.InlineKeyboardButton(
-                    text=done_text,
-                    callback_data="confirm_enjoyment"))
+                    text=text,
+                    callback_data=f"enjoyment_{i}"))
 
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=inline_kb
-                )
-            except telebot.apihelper.ApiTelegramException as api_error:
-                # Ignore "message is not modified" error
-                if "message is not modified" not in str(api_error):
-                    logging.exception(
-                        f"Telegram API error in handle_enjoyment_selection: {api_error}")
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_enjoyment"))
 
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {enjoyment}")
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(call, messages[language]['invalid_rating'])
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as api_error:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(api_error):
+                logging.exception(
+                    f"Telegram API error in handle_enjoyment_selection: {api_error}")
+
+        # Replace direct call with safe_answer_callback
+        safe_answer_callback(
+            call, f"{messages[language]['selected']} {enjoyment}")
     except Exception as e:
         logging.exception(f"Error in handle_enjoyment_selection: {e}")
         bot.send_message(chat_id, "An error occurred. Please try again later.")
@@ -1718,7 +1727,7 @@ def handle_visitor_type_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
+        data = callback_suffix(call.data, "visitor")
 
         # Remove the 'Other' option
         visitor_options = messages[language]['visitor_type_options'][:-1]
@@ -1768,28 +1777,29 @@ def handle_visitor_type_selection(call):
                 # Proceed directly to ask_duration
                 ask_duration(chat_id, user_id, language)
         else:
-            idx = int(data)
-            if 0 <= idx < len(visitor_options):
-                choice = visitor_options[idx]
-
-                # Toggle selection
-                if choice in user_data[user_id]['visitor_type']:
-                    user_data[user_id]['visitor_type'].remove(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['unselected']} {choice}")
-                else:
-                    user_data[user_id]['visitor_type'].append(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['selected']} {choice}")
-
-                update_visitor_type_keyboard(
-                    call.message, user_id, language, visitor_options)
-            else:
-                # Replace direct call with safe_answer_callback
+            try:
+                idx = callback_index(call.data, "visitor", visitor_options)
+            except (ValueError, IndexError):
                 safe_answer_callback(
                     call, messages[language]['invalid_selection'])
+                return
+
+            choice = visitor_options[idx]
+
+            # Toggle selection
+            if choice in user_data[user_id]['visitor_type']:
+                user_data[user_id]['visitor_type'].remove(choice)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['unselected']} {choice}")
+            else:
+                user_data[user_id]['visitor_type'].append(choice)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['selected']} {choice}")
+
+            update_visitor_type_keyboard(
+                call.message, user_id, language, visitor_options)
     except Exception as e:
         logging.exception(f"Error in handle_visitor_type_selection: {e}")
         bot.send_message(
@@ -1837,7 +1847,6 @@ def update_visitor_type_keyboard(message, user_id, language, options):
     except Exception as e:
         logging.exception(f"Error in update_visitor_type_keyboard: {e}")
 
-# In[10]:
 
 
 # Duration and accessibility handlers
@@ -2035,7 +2044,7 @@ def handle_accessibility_selection(call):
         user_id = call.from_user.id
         language = user_data[user_id]['language']
 
-        data = call.data.split('_', 1)[1]
+        data = callback_suffix(call.data, "accessibility")
         # Remove the 'Other' option
         options = messages[language]['accessibility_options'][:-1]
 
@@ -2153,7 +2162,6 @@ def update_accessibility_keyboard(message, user_id, language, options):
                 'error_occurred',
                 "An error occurred. Please try again later."))
 
-# In[11]:
 
 
 def ask_regularity(chat_id, user_id, language):
@@ -2417,87 +2425,79 @@ def handle_frequency_change_selection(call):
         language = user_data[user_id]['language']
         anon_id = get_anonymous_id(user_id)
 
-        data_parts = call.data.split('_')
-        if len(data_parts) >= 3 and data_parts[2].isdigit():
-            idx = int(data_parts[2])
-            options = messages[language]['options']['frequency_change']
-
-            if 0 <= idx < len(options):
-                selected_frequency_change = options[idx]
-                previous_freq_change = user_data[user_id].get(
-                    'frequency_change', '')
-
-                # Only log if this is a modification
-                if user_data[user_id].get(
-                        'modifying') and previous_freq_change != selected_frequency_change:
-                    flow_logger.info(
-                        f"User {anon_id}: Modified frequency_change from '{previous_freq_change}' to '{selected_frequency_change}'")
-
-                # Save the new selection
-                user_data[user_id]['frequency_change'] = selected_frequency_change
-
-                # Remove current question marker
-                user_data[user_id].pop('current_question', None)
-
-                # Notify user of selection
-                bot.answer_callback_query(
-                    call.id, f"{messages[language]['selected']} {selected_frequency_change}")
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=None)
-                bot.send_message(
-                    chat_id,
-                    f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_frequency_change)}</i>",
-                    parse_mode='HTML')
-
-                # Check for "didn't visit before invasion" option
-                didnt_visit_options = [
-                    "I didn't visit this place before the invasion",
-                    "Не відвідував(ла) це місце до вторгнення"
-                ]
-
-                # Clear dependent fields if appropriate
-                if previous_freq_change != selected_frequency_change:
-                    clear_dependent_fields(
-                        user_id,
-                        'frequency_change',
-                        previous_freq_change,
-                        selected_frequency_change)
-
-                # Special handling for "didn't visit before" responses
-                if selected_frequency_change in didnt_visit_options:
-                    # Set a consistent value for noticed_changes for data
-                    # integrity
-                    user_data[user_id]['noticed_changes'] = selected_frequency_change
-
-                # Determine next question based on modification state
-                if user_data[user_id].get('modifying'):
-                    if selected_frequency_change in didnt_visit_options:
-                        # Skip noticed_changes and go to final confirmation
-                        user_data[user_id].pop('modifying')
-                        user_data[user_id].pop('modifying_field', None)
-                        ask_final_confirmation(chat_id, user_id, language)
-                    else:
-                        # If noticed_changes not already answered or we're
-                        # directly modifying frequency_change, proceed to ask
-                        # it
-                        ask_noticed_changes(chat_id, user_id, language)
-                else:
-                    # Normal flow if not modifying
-                    if selected_frequency_change in didnt_visit_options:
-                        # Skip to wishlist question
-                        ask_wishlist(chat_id, user_id, language)
-                    else:
-                        ask_noticed_changes(chat_id, user_id, language)
-            else:
-                bot.answer_callback_query(
-                    call.id, messages[language].get(
-                        'invalid_selection', "Invalid selection."))
-        else:
+        options = messages[language]['options']['frequency_change']
+        try:
+            idx = callback_index(call.data, "frequency_change", options)
+        except (ValueError, IndexError):
             bot.answer_callback_query(
                 call.id, messages[language].get(
                     'invalid_selection', "Invalid selection."))
+            return
+
+        selected_frequency_change = options[idx]
+        previous_freq_change = user_data[user_id].get('frequency_change', '')
+
+        # Only log if this is a modification
+        if user_data[user_id].get(
+                'modifying') and previous_freq_change != selected_frequency_change:
+            flow_logger.info(
+                f"User {anon_id}: Modified frequency_change from '{previous_freq_change}' to '{selected_frequency_change}'")
+
+        # Save the new selection
+        user_data[user_id]['frequency_change'] = selected_frequency_change
+
+        # Remove current question marker
+        user_data[user_id].pop('current_question', None)
+
+        # Notify user of selection
+        bot.answer_callback_query(
+            call.id, f"{messages[language]['selected']} {selected_frequency_change}")
+        bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=None)
+        bot.send_message(
+            chat_id,
+            f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_frequency_change)}</i>",
+            parse_mode='HTML')
+
+        # Check for "didn't visit before invasion" option
+        didnt_visit_options = [
+            "I didn't visit this place before the invasion",
+            "Не відвідував(ла) це місце до вторгнення"
+        ]
+
+        # Clear dependent fields if appropriate
+        if previous_freq_change != selected_frequency_change:
+            clear_dependent_fields(
+                user_id,
+                'frequency_change',
+                previous_freq_change,
+                selected_frequency_change)
+
+        # Special handling for "didn't visit before" responses
+        if selected_frequency_change in didnt_visit_options:
+            # Set a consistent value for noticed_changes for data integrity
+            user_data[user_id]['noticed_changes'] = selected_frequency_change
+
+        # Determine next question based on modification state
+        if user_data[user_id].get('modifying'):
+            if selected_frequency_change in didnt_visit_options:
+                # Skip noticed_changes and go to final confirmation
+                user_data[user_id].pop('modifying')
+                user_data[user_id].pop('modifying_field', None)
+                ask_final_confirmation(chat_id, user_id, language)
+            else:
+                # If noticed_changes not already answered or we're directly
+                # modifying frequency_change, proceed to ask it.
+                ask_noticed_changes(chat_id, user_id, language)
+        else:
+            # Normal flow if not modifying
+            if selected_frequency_change in didnt_visit_options:
+                # Skip to wishlist question
+                ask_wishlist(chat_id, user_id, language)
+            else:
+                ask_noticed_changes(chat_id, user_id, language)
     except Exception as e:
         logging.exception(f"Error in handle_frequency_change_selection: {e}")
         bot.send_message(
@@ -2507,7 +2507,6 @@ def handle_frequency_change_selection(call):
                 "An error occurred. Please try again later."))
 
 
-# In[12]:
 
 
 # Noticed changes and changes details handlers
@@ -2557,53 +2556,52 @@ def handle_noticed_changes_selection(call):
         user_id = call.from_user.id
         language = user_data[user_id]['language']
 
-        data = call.data.split('_')[2]
         options = messages[language]['options']['noticed_changes']
-        idx = int(data)
-
-        if 0 <= idx < len(options):
-            selected_change = options[idx]
-
-            # Store temporarily, don't commit until confirmed
-            user_data[user_id]['temp_noticed_changes'] = selected_change
-
-            # Update keyboard to show selection and add Confirm button
-            inline_kb = types.InlineKeyboardMarkup(row_width=1)
-            for i, option in enumerate(options):
-                # Mark the selected option
-                text = f"✅ {option}" if i == idx else option
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=text,
-                        callback_data=f"noticed_changes_{i}"))
-
-            # Add Confirm/Done button
-            done_text = messages[language]['done_button']
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=done_text,
-                    callback_data="confirm_noticed_changes"))
-
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=inline_kb
-                )
-            except telebot.apihelper.ApiTelegramException as e:
-                # Ignore "message is not modified" error
-                if "message is not modified" not in str(e):
-                    logging.exception(
-                        f"Error in handle_noticed_changes_selection: {e}")
-
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {selected_change}")
-        else:
-            # Replace direct call with safe_answer_callback
+        try:
+            idx = callback_index(call.data, "noticed_changes", options)
+        except (ValueError, IndexError):
             safe_answer_callback(
                 call, messages[language].get(
                     'invalid_selection', "Invalid selection."))
+            return
+
+        selected_change = options[idx]
+
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_noticed_changes'] = selected_change
+
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
+            inline_kb.add(
+                types.InlineKeyboardButton(
+                    text=text,
+                    callback_data=f"noticed_changes_{i}"))
+
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_noticed_changes"))
+
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e):
+                logging.exception(
+                    f"Error in handle_noticed_changes_selection: {e}")
+
+        # Replace direct call with safe_answer_callback
+        safe_answer_callback(
+            call, f"{messages[language]['selected']} {selected_change}")
     except Exception as e:
         logging.exception(f"Error in handle_noticed_changes_selection: {e}")
         bot.send_message(
@@ -2775,9 +2773,9 @@ def handle_changes_detail_selection(call):
         language = user_data[user_id]['language']
         anon_id = get_anonymous_id(user_id)
 
-        data = call.data.split('_')[2]
         # Remove the 'Other' option
         options = messages[language]['options']['changes_detail'][:-1]
+        data = callback_suffix(call.data, "changes_detail")
 
         if data == 'done':
             if not user_data[user_id]['changes_detail'] and not user_data[user_id].get(
@@ -2830,35 +2828,34 @@ def handle_changes_detail_selection(call):
                     f"User {anon_id}: Proceeding to wishlist question")
                 ask_wishlist(chat_id, user_id, language)
         else:
-            idx = int(data)
-            if 0 <= idx < len(options):
-                selected_option = options[idx]
-
-                # Toggle selection
-                if selected_option in user_data[user_id]['changes_detail']:
-                    user_data[user_id]['changes_detail'].remove(
-                        selected_option)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['unselected']} {selected_option}")
-                    flow_logger.info(
-                        f"User {anon_id}: Unselected changes_detail option: {selected_option}")
-                else:
-                    user_data[user_id]['changes_detail'].append(
-                        selected_option)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['selected']} {selected_option}")
-                    flow_logger.info(
-                        f"User {anon_id}: Selected changes_detail option: {selected_option}")
-
-                update_changes_detail_selection_keyboard(
-                    call.message, user_id, language)
-            else:
-                # Replace direct call with safe_answer_callback
+            try:
+                idx = callback_index(call.data, "changes_detail", options)
+            except (ValueError, IndexError):
                 safe_answer_callback(
                     call, messages[language].get(
                         'invalid_selection', "Invalid selection."))
+                return
+
+            selected_option = options[idx]
+
+            # Toggle selection
+            if selected_option in user_data[user_id]['changes_detail']:
+                user_data[user_id]['changes_detail'].remove(selected_option)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['unselected']} {selected_option}")
+                flow_logger.info(
+                    f"User {anon_id}: Unselected changes_detail option: {selected_option}")
+            else:
+                user_data[user_id]['changes_detail'].append(selected_option)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['selected']} {selected_option}")
+                flow_logger.info(
+                    f"User {anon_id}: Selected changes_detail option: {selected_option}")
+
+            update_changes_detail_selection_keyboard(
+                call.message, user_id, language)
     except Exception as e:
         logging.exception(f"Error in handle_changes_detail_selection: {e}")
         bot.send_message(
@@ -2925,7 +2922,6 @@ def update_changes_detail_selection_keyboard(message, user_id, language):
                 'error_occurred',
                 "An error occurred. Please try again later."))
 
-# In[13]:
 
 
 # Wishlist handler modifications
@@ -2983,7 +2979,7 @@ def handle_wishlist_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
+        data = callback_suffix(call.data, "wishlist")
 
         # Use the same options list as in ask_wishlist
         all_options = messages[language]['options']['wishlist']
@@ -3029,29 +3025,28 @@ def handle_wishlist_selection(call):
                 # Proceed to socioeconomic questions
                 ask_age(chat_id, user_id, language)
         else:
-            idx = int(data)
-
-            if 0 <= idx < len(options):
-                choice = options[idx]
-
-                # Toggle selection
-                if choice in user_data[user_id]['wishlist']:
-                    user_data[user_id]['wishlist'].remove(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['unselected']} {choice}")
-                else:
-                    user_data[user_id]['wishlist'].append(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['selected']} {choice}")
-
-                update_wishlist_keyboard(
-                    call.message, user_id, language, options)
-            else:
-                # Replace direct call with safe_answer_callback
+            try:
+                idx = callback_index(call.data, "wishlist", options)
+            except (ValueError, IndexError):
                 safe_answer_callback(
                     call, messages[language]['invalid_selection'])
+                return
+
+            choice = options[idx]
+
+            # Toggle selection
+            if choice in user_data[user_id]['wishlist']:
+                user_data[user_id]['wishlist'].remove(choice)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['unselected']} {choice}")
+            else:
+                user_data[user_id]['wishlist'].append(choice)
+                # Replace direct call with safe_answer_callback
+                safe_answer_callback(
+                    call, f"{messages[language]['selected']} {choice}")
+
+            update_wishlist_keyboard(call.message, user_id, language, options)
     except Exception as e:
         logging.exception(f"Error in handle_wishlist_selection: {e}")
         bot.send_message(
@@ -3098,7 +3093,6 @@ def update_wishlist_keyboard(message, user_id, language, options):
     except Exception as e:
         logging.exception(f"Error in update_wishlist_keyboard: {e}")
 
-# In[14]:
 
 
 # Socioeconomic questions
@@ -3154,50 +3148,51 @@ def handle_age_selection(call):
         else:
             language = user_data[user_id]['language']
 
-        idx = int(call.data.split('_')[1])
         options = messages[language]['options']['age']
-
-        if 0 <= idx < len(options):
-            selected_age = options[idx]
-
-            # Store temporarily, don't commit until confirmed
-            user_data[user_id]['temp_age'] = selected_age
-
-            # Update keyboard to show selection and add Confirm button
-            inline_kb = types.InlineKeyboardMarkup(row_width=1)
-            for i, option in enumerate(options):
-                # Mark the selected option
-                text = f"✅ {option}" if i == idx else option
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=text,
-                        callback_data=f"age_{i}"))
-
-            # Add Confirm/Done button
-            done_text = messages[language]['done_button']
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=done_text,
-                    callback_data="confirm_age"))
-
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=inline_kb
-                )
-            except telebot.apihelper.ApiTelegramException as e:
-                # Ignore "message is not modified" error
-                if "message is not modified" not in str(e):
-                    logging.exception(f"Error in handle_age_selection: {e}")
-
-            # Notify user of selection (but not confirmation yet)
-            bot.answer_callback_query(
-                call.id, f"{messages[language]['selected']} {selected_age}")
-        else:
+        try:
+            idx = callback_index(call.data, "age", options)
+        except (ValueError, IndexError):
             bot.answer_callback_query(
                 call.id, messages[language].get(
                     'invalid_selection', "Invalid selection."))
+            return
+
+        selected_age = options[idx]
+
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_age'] = selected_age
+
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
+            inline_kb.add(
+                types.InlineKeyboardButton(
+                    text=text,
+                    callback_data=f"age_{i}"))
+
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_age"))
+
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e):
+                logging.exception(f"Error in handle_age_selection: {e}")
+
+        # Notify user of selection (but not confirmation yet)
+        bot.answer_callback_query(
+            call.id, f"{messages[language]['selected']} {selected_age}")
     except Exception as e:
         logging.exception(f"Error in handle_age_selection: {e}")
         try:
@@ -3322,55 +3317,49 @@ def handle_gender_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
-
-        if data.isdigit():
-            idx = int(data)
-            options = messages[language]['options']['gender']
-
-            if 0 <= idx < len(options):
-                selected_gender = options[idx]
-
-                # Store temporarily, don't commit until confirmed
-                user_data[user_id]['temp_gender'] = selected_gender
-
-                # Update keyboard to show selection and add Confirm button
-                inline_kb = types.InlineKeyboardMarkup(row_width=1)
-                for i, option in enumerate(options):
-                    # Mark the selected option
-                    text = f"✅ {option}" if i == idx else option
-                    inline_kb.add(
-                        types.InlineKeyboardButton(
-                            text=text, callback_data=f"gender_{i}"))
-
-                # Add Confirm/Done button
-                done_text = messages[language]['done_button']
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=done_text,
-                        callback_data="confirm_gender"))
-
-                try:
-                    bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=inline_kb
-                    )
-                except telebot.apihelper.ApiTelegramException as e:
-                    # Ignore "message is not modified" error
-                    if "message is not modified" not in str(e):
-                        logging.exception(
-                            f"Error in handle_gender_selection: {e}")
-
-                # Notify user of selection (but not confirmation yet)
-                bot.answer_callback_query(
-                    call.id, f"{messages[language]['selected']} {selected_gender}")
-            else:
-                bot.answer_callback_query(
-                    call.id, messages[language]['invalid_selection'])
-        else:
+        options = messages[language]['options']['gender']
+        try:
+            idx = callback_index(call.data, "gender", options)
+        except (ValueError, IndexError):
             bot.answer_callback_query(
                 call.id, messages[language]['invalid_selection'])
+            return
+
+        selected_gender = options[idx]
+
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_gender'] = selected_gender
+
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
+            inline_kb.add(
+                types.InlineKeyboardButton(
+                    text=text, callback_data=f"gender_{i}"))
+
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_gender"))
+
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e):
+                logging.exception(f"Error in handle_gender_selection: {e}")
+
+        # Notify user of selection (but not confirmation yet)
+        bot.answer_callback_query(
+            call.id, f"{messages[language]['selected']} {selected_gender}")
     except Exception as e:
         logging.exception(f"Error in handle_gender_selection: {e}")
         bot.send_message(chat_id, messages[language]['error_occurred'])
@@ -3462,55 +3451,50 @@ def handle_occupation_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
         options = messages[language]['options']['occupation']
-
-        if data.isdigit():
-            idx = int(data)
-            if 0 <= idx < len(options):
-                selected_occupation = options[idx]
-
-                # Store temporarily, don't commit until confirmed
-                user_data[user_id]['temp_occupation'] = selected_occupation
-
-                # Update keyboard to show selection and add Confirm button
-                inline_kb = types.InlineKeyboardMarkup(row_width=1)
-                for i, option in enumerate(options):
-                    # Mark the selected option
-                    text = f"✅ {option}" if i == idx else option
-                    inline_kb.add(
-                        types.InlineKeyboardButton(
-                            text=text,
-                            callback_data=f"occupation_{i}"))
-
-                # Add Confirm/Done button
-                done_text = messages[language]['done_button']
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=done_text,
-                        callback_data="confirm_occupation"))
-
-                try:
-                    bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=inline_kb
-                    )
-                except telebot.apihelper.ApiTelegramException as e:
-                    # Ignore "message is not modified" error
-                    if "message is not modified" not in str(e):
-                        logging.exception(
-                            f"Error in handle_occupation_selection: {e}")
-
-                # Notify user of selection (but not confirmation yet)
-                bot.answer_callback_query(
-                    call.id, f"{messages[language]['selected']} {selected_occupation}")
-            else:
-                bot.answer_callback_query(
-                    call.id, messages[language]['invalid_selection'])
-        else:
+        try:
+            idx = callback_index(call.data, "occupation", options)
+        except (ValueError, IndexError):
             bot.answer_callback_query(
                 call.id, messages[language]['invalid_selection'])
+            return
+
+        selected_occupation = options[idx]
+
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_occupation'] = selected_occupation
+
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
+            inline_kb.add(
+                types.InlineKeyboardButton(
+                    text=text,
+                    callback_data=f"occupation_{i}"))
+
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_occupation"))
+
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e):
+                logging.exception(f"Error in handle_occupation_selection: {e}")
+
+        # Notify user of selection (but not confirmation yet)
+        bot.answer_callback_query(
+            call.id, f"{messages[language]['selected']} {selected_occupation}")
     except Exception as e:
         logging.exception(f"Error in handle_occupation_selection: {e}")
         bot.send_message(chat_id, messages[language]['error_occurred'])
@@ -3571,7 +3555,6 @@ def confirm_occupation(call):
         logging.exception(f"Error in confirm_occupation: {e}")
         bot.send_message(chat_id, messages[language]['error_occurred'])
 
-# In[15]:
 
 
 # Income and Kremenchuk handlers
@@ -3620,54 +3603,49 @@ def handle_income_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
         options = messages[language]['options']['income']
-
-        if data.isdigit():
-            idx = int(data)
-            if 0 <= idx < len(options):
-                selected_income = options[idx]
-
-                # Store temporarily, don't commit until confirmed
-                user_data[user_id]['temp_income'] = selected_income
-
-                # Update keyboard to show selection and add Confirm button
-                inline_kb = types.InlineKeyboardMarkup(row_width=1)
-                for i, option in enumerate(options):
-                    # Mark the selected option
-                    text = f"✅ {option}" if i == idx else option
-                    inline_kb.add(
-                        types.InlineKeyboardButton(
-                            text=text, callback_data=f"income_{i}"))
-
-                # Add Confirm/Done button
-                done_text = messages[language]['done_button']
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=done_text,
-                        callback_data="confirm_income"))
-
-                try:
-                    bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=inline_kb
-                    )
-                except telebot.apihelper.ApiTelegramException as e:
-                    # Ignore "message is not modified" error
-                    if "message is not modified" not in str(e):
-                        logging.exception(
-                            f"Error in handle_income_selection: {e}")
-
-                # Notify user of selection (but not confirmation yet)
-                bot.answer_callback_query(
-                    call.id, f"{messages[language]['selected']} {selected_income}")
-            else:
-                bot.answer_callback_query(
-                    call.id, messages[language]['invalid_selection'])
-        else:
+        try:
+            idx = callback_index(call.data, "income", options)
+        except (ValueError, IndexError):
             bot.answer_callback_query(
                 call.id, messages[language]['invalid_selection'])
+            return
+
+        selected_income = options[idx]
+
+        # Store temporarily, don't commit until confirmed
+        user_data[user_id]['temp_income'] = selected_income
+
+        # Update keyboard to show selection and add Confirm button
+        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+        for i, option in enumerate(options):
+            # Mark the selected option
+            text = f"✅ {option}" if i == idx else option
+            inline_kb.add(
+                types.InlineKeyboardButton(
+                    text=text, callback_data=f"income_{i}"))
+
+        # Add Confirm/Done button
+        done_text = messages[language]['done_button']
+        inline_kb.add(
+            types.InlineKeyboardButton(
+                text=done_text,
+                callback_data="confirm_income"))
+
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=inline_kb
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e):
+                logging.exception(f"Error in handle_income_selection: {e}")
+
+        # Notify user of selection (but not confirmation yet)
+        bot.answer_callback_query(
+            call.id, f"{messages[language]['selected']} {selected_income}")
     except Exception as e:
         logging.exception(f"Error in handle_income_selection: {e}")
         bot.send_message(chat_id, messages[language]['error_occurred'])
@@ -3785,7 +3763,7 @@ def handle_kremenchuk_selection(call):
         chat_id = call.message.chat.id
         user_id = call.from_user.id
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
+        data = callback_suffix(call.data, "kremenchuk")
         options = messages[language]['options']['kremenchuk'][:- \
             2] + messages[language]['options']['kremenchuk'][-1:]
 
@@ -3843,23 +3821,24 @@ def handle_kremenchuk_selection(call):
                 ask_description(chat_id, user_id, language)
 
         else:
-            idx = int(data)
-            if 0 <= idx < len(options):
-                selected_kremenchuk = options[idx]
-
-                # Set the selection
-                user_data[user_id]['kremenchuk'] = selected_kremenchuk
-
-                safe_answer_callback(
-                    call, f"{messages[language]['selected']} {selected_kremenchuk}")
-
-                # Update the keyboard to show selection
-                update_kremenchuk_keyboard(
-                    call.message, user_id, language, options)
-            else:
+            try:
+                idx = callback_index(call.data, "kremenchuk", options)
+            except (ValueError, IndexError):
                 safe_answer_callback(
                     call, messages[language].get(
                         'invalid_selection', "Invalid selection."))
+                return
+
+            selected_kremenchuk = options[idx]
+
+            # Set the selection
+            user_data[user_id]['kremenchuk'] = selected_kremenchuk
+
+            safe_answer_callback(
+                call, f"{messages[language]['selected']} {selected_kremenchuk}")
+
+            # Update the keyboard to show selection
+            update_kremenchuk_keyboard(call.message, user_id, language, options)
     except Exception as e:
         logging.exception(f"Error in handle_kremenchuk_selection: {e}")
         bot.send_message(
@@ -3906,7 +3885,6 @@ def update_kremenchuk_keyboard(message, user_id, language, options):
     except Exception as e:
         logging.exception(f"Error in update_kremenchuk_keyboard: {e}")
 
-# In[16]:
 
 
 # Description handlers
@@ -3949,12 +3927,11 @@ def ask_description(chat_id, user_id, language):
         else:
             enhanced_instructions += "\n\n(Щоб надіслати голосове повідомлення, натисніть і утримуйте іконку мікрофона в рядку повідомлень, говоріть і потім відпустіть.)"
 
-        msg = bot.send_message(
+        send_next_step_prompt(
             chat_id,
             enhanced_instructions,
-            reply_markup=inline_kb
-        )
-        bot.register_next_step_handler(msg, handle_description)
+            handle_description,
+            reply_markup=inline_kb)
 
     except Exception as e:
         logging.exception(f"Error in ask_description: {e}")
@@ -4044,7 +4021,8 @@ def handle_description(message):
                     parse_mode='HTML'
                 )
                 # Re-register for a new attempt
-                bot.register_next_step_handler(message, handle_description)
+                bot.register_next_step_handler_by_chat_id(
+                    chat_id, handle_description)
                 return
 
             try:
@@ -4058,7 +4036,7 @@ def handle_description(message):
                         # Successfully downloaded, break retry loop
                         break
                     except ApiTelegramException as e:
-                        if "429" in str(e) or "too many requests" in str(e).lower():
+                        if getattr(e, "error_code", None) == 429:
                             retry_after = telegram_retry_after(e, default=3)
                             flow_logger.warning(f"Voice download error: {e}, retrying in {retry_after}s")
                             time.sleep(retry_after)
@@ -4103,11 +4081,13 @@ def handle_description(message):
                     parse_mode='HTML'
                 )
                 # Re-register for a new attempt
-                bot.register_next_step_handler(message, handle_description)
+                bot.register_next_step_handler_by_chat_id(
+                    chat_id, handle_description)
                 return
         else:
             safe_send_message(chat_id, messages[language]['please_send_text_or_voice'])
-            bot.register_next_step_handler(message, handle_description)
+            bot.register_next_step_handler_by_chat_id(
+                chat_id, handle_description)
             return
 
         # Store data using thread-safe methods
@@ -4382,7 +4362,7 @@ def handle_final_confirmation_choice(call):
                 return
 
         language = user_data[user_id]['language']
-        choice = call.data.split('_')[1]
+        choice = callback_suffix(call.data, "final")
 
         if choice == '0':  # Modify Responses
             # Keep this log as it's modification-related
@@ -4553,7 +4533,7 @@ def handle_modification_selection(call):
             ask_final_confirmation(chat_id, user_id, language)
         else:
             # User selected a specific field to modify
-            field = '_'.join(call.data.split('_')[1:])
+            field = callback_suffix(call.data, "modify")
             bot.edit_message_reply_markup(
                 chat_id=chat_id,
                 message_id=call.message.message_id,
@@ -4837,7 +4817,6 @@ def clear_dependent_fields(user_id, field, old_value, new_value):
             f"User {anon_id}: Cleared fields: {cleared_fields} with previous values: {current_values}")
 
     return cleared_fields
-# In[18]:
 
 
 # Continue or stop handlers
@@ -4862,7 +4841,7 @@ def ask_continue_or_stop(chat_id, user_id, language):
 
         # Then ask if they want to continue
         continue_msg = messages[language]['continue_question'].format(
-            nickname=f'<b>{nickname}</b>')
+            nickname=f'<b>{escape_html(nickname)}</b>')
         bot.send_message(
             chat_id,
             continue_msg,
@@ -4893,8 +4872,8 @@ def handle_continue_or_stop_selection(call):
                 return
 
         language = user_data[user_id]['language']
-        data = call.data.split('_')[1]
         options = messages[language]['continue_options']
+        data = callback_suffix(call.data, "continue")
 
         if data == '0':  # Continue
             # Replace direct call with safe_answer_callback
@@ -4907,9 +4886,10 @@ def handle_continue_or_stop_selection(call):
             save_data_and_restart(
                 chat_id, user_id, language, restart_survey=False)
 
-            msg = bot.send_message(
-                chat_id, messages[language]['send_location'])
-            bot.register_next_step_handler(msg, handle_location_step)
+            send_next_step_prompt(
+                chat_id,
+                messages[language]['send_location'],
+                handle_location_step)
 
         elif data == '1':  # Stop
             # Replace direct call with safe_answer_callback
@@ -5080,99 +5060,29 @@ def handle_text_messages(m):
             )
             bot.send_message(chat_id, help_text)
 
-# In[ ]:
 
-
-# Connection pool size
-# Database connection pool implementation
-DB_POOL_SIZE = 5
-db_pool = queue.Queue(maxsize=DB_POOL_SIZE)
-db_lock = threading.Lock()
-
-def initialize_connection_pool():
-    """Initialize the database connection pool."""
-    flow_logger.info(f"Initializing database connection pool with {DB_POOL_SIZE} connections")
-    for _ in range(DB_POOL_SIZE):
-        try:
-            conn = sqlite3.connect(db_file, check_same_thread=False)
-            # Set pragmas for better performance and reliability
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA busy_timeout=5000")
-            db_pool.put(conn)
-        except Exception as e:
-            logging.exception(f"Error initializing connection pool: {e}")
-
-def get_db_connection():
-    """Get a database connection from the pool or create a new one if needed."""
-    try:
-        # Try to get a connection from the pool with a timeout
-        connection = db_pool.get(block=True, timeout=5)
-        
-        # Test the connection is valid before returning it
-        try:
-            connection.execute("SELECT 1")
-            return connection
-        except sqlite3.Error:
-            # Connection is stale, create a new one
-            try:
-                connection.close()
-            except Exception:
-                pass
-            flow_logger.warning("Retrieved stale connection from pool, creating new one")
-            return sqlite3.connect(db_file, check_same_thread=False)
-            
-    except queue.Empty:
-        # If pool is empty and timeout expires, create a new connection
-        flow_logger.warning("DB pool exhausted, creating new connection")
-        return sqlite3.connect(db_file, check_same_thread=False)
-    except Exception as e:
-        flow_logger.error(f"Error getting DB connection: {e}")
-        # Always return a working connection
-        return sqlite3.connect(db_file, check_same_thread=False)
-
-def return_db_connection(connection):
-    """Return a connection to the pool or close it if pool is full."""
-    try:
-        # Test the connection before returning it to the pool
-        try:
-            connection.rollback()
-            connection.execute("SELECT 1")
-            # Try to return the connection to the pool
-            db_pool.put(connection, block=False)
-        except (sqlite3.Error, Exception):
-            # If connection is no longer valid, close it
-            try:
-                connection.close()
-            except Exception:
-                pass
-    except queue.Full:
-        # If pool is full, close the connection
-        try:
-            connection.close()
-        except Exception:
-            pass
-    except Exception as e:
-        # Ensure connection is closed on any error
-        flow_logger.error(f"Error returning DB connection: {e}")
-        try:
-            connection.close()
-        except Exception:
-            pass
 
 # Data saving
+
 # Updated save_data_and_restart function with better error handling for concurrent use
 def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
     try:
         # Get user data with thread-safe access
         with user_data_lock:
             user_data_copy = copy.deepcopy(user_data.get(user_id, {}))
-        
-        with user_profiles_lock:
             user_consent = user_profiles.get(user_id, {}).get('consent', False)
-        
-        consent_str = "True" if user_consent else "False"
 
+        if not user_consent:
+            flow_logger.info("Consent denied; skipping response row insert")
+            clear_message_ids(user_id)
+            if restart_survey:
+                send_welcome(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    start_param='restart')
+            return True
+
+        consent_str = "True"
         user_hash = get_user_hash(user_id)
         nickname = get_user_nickname(user_hash)
         month_year = datetime.datetime.now().strftime("%Y-%m")
@@ -5186,105 +5096,74 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
             with user_profiles_lock:
                 kremenchuk_value = user_profiles.get(user_id, {}).get('kremenchuk', '')
 
-        # Prepare data dictionary
-        if not user_consent:
-            # User declined consent, store only consent
-            data = {
-                'nickname': '',
-                'month_year': '',
-                'latitude': '',
-                'longitude': '',
-                'venue_title': '',
-                'venue_address': '',
-                'enjoyment': '',
-                'purpose_visit': '',
-                'regularity': '',
-                'noticed_changes': '',
-                'changes_detail': '',
-                'wishlist': '',
-                'kremenchuk': '',
-                'description': '',
-                'voice_submitted': '',
-                'age': '',
-                'gender': '',
-                'occupation': '',
-                'income': '',
-                'language': language,  # language chosen can still be stored
-                'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'visitor_type': '',
-                'duration_visit': '',
-                'accessibility': '',
-                'consent': consent_str
-            }
+        # User consented. Create the data dictionary safely
+        location_data = user_data_copy.get('location', {})
+        venue_address = location_data.get('venue_address', '')
+
+        # Process complex fields safely
+        purpose_list = user_data_copy.get('purpose_visit', [])
+        if isinstance(purpose_list, list):
+            purpose_str = ';'.join(purpose_list)
         else:
-            # User consented. Create the data dictionary safely
-            location_data = user_data_copy.get('location', {})
-            venue_address = location_data.get('venue_address', '')
-            
-            # Process complex fields safely
-            purpose_list = user_data_copy.get('purpose_visit', [])
-            if isinstance(purpose_list, list):
-                purpose_str = ';'.join(purpose_list)
-            else:
-                purpose_str = str(purpose_list)
-                
-            changes_detail_list = user_data_copy.get('changes_detail', [])
-            if isinstance(changes_detail_list, list):
-                changes_detail_str = ';'.join(changes_detail_list)
-            else:
-                changes_detail_str = str(changes_detail_list)
-                
-            wishlist_list = user_data_copy.get('wishlist', [])
-            if isinstance(wishlist_list, list):
-                wishlist_str = ';'.join(wishlist_list)
-            else:
-                wishlist_str = str(wishlist_list) if wishlist_list else ''
-                
-            visitor_type_list = user_data_copy.get('visitor_type', [])
-            if isinstance(visitor_type_list, list):
-                visitor_type_str = ';'.join(visitor_type_list)
-            else:
-                visitor_type_str = str(visitor_type_list)
-                
-            accessibility_list = user_data_copy.get('accessibility', [])
-            if isinstance(accessibility_list, list):
-                accessibility_str = ';'.join(accessibility_list)
-            else:
-                accessibility_str = str(accessibility_list) if accessibility_list else ''
+            purpose_str = str(purpose_list)
 
-            # Format kremenchuk_str based on type
-            if isinstance(kremenchuk_value, list):
-                kremenchuk_str = ';'.join(kremenchuk_value)
-            else:
-                kremenchuk_str = str(kremenchuk_value)
+        changes_detail_list = user_data_copy.get('changes_detail', [])
+        if isinstance(changes_detail_list, list):
+            changes_detail_str = ';'.join(changes_detail_list)
+        else:
+            changes_detail_str = str(changes_detail_list)
 
-            data = {
-                'nickname': nickname,
-                'month_year': month_year,
-                'latitude': str(location_data.get('latitude', '')),
-                'longitude': str(location_data.get('longitude', '')),
-                'venue_title': location_data.get('venue_title', ''),
-                'venue_address': venue_address,
-                'enjoyment': user_data_copy.get('enjoyment', ''),
-                'purpose_visit': purpose_str,
-                'regularity': user_data_copy.get('regularity', ''),
-                'noticed_changes': user_data_copy.get('noticed_changes', ''),
-                'changes_detail': changes_detail_str,
-                'wishlist': wishlist_str,
-                'kremenchuk': kremenchuk_str,
-                'description': user_data_copy.get('description', ''),
-                'voice_submitted': user_data_copy.get('voice_submitted', ''),
-                'age': user_data_copy.get('age', ''),
-                'gender': user_data_copy.get('gender', ''),
-                'occupation': user_data_copy.get('occupation', ''),
-                'income': user_data_copy.get('income', ''),
-                'language': language,
-                'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'visitor_type': visitor_type_str,
-                'duration_visit': user_data_copy.get('duration_visit', ''),
-                'accessibility': accessibility_str,
-                'consent': consent_str
-            }
+        wishlist_list = user_data_copy.get('wishlist', [])
+        if isinstance(wishlist_list, list):
+            wishlist_str = ';'.join(wishlist_list)
+        else:
+            wishlist_str = str(wishlist_list) if wishlist_list else ''
+
+        visitor_type_list = user_data_copy.get('visitor_type', [])
+        if isinstance(visitor_type_list, list):
+            visitor_type_str = ';'.join(visitor_type_list)
+        else:
+            visitor_type_str = str(visitor_type_list)
+
+        accessibility_list = user_data_copy.get('accessibility', [])
+        if isinstance(accessibility_list, list):
+            accessibility_str = ';'.join(accessibility_list)
+        else:
+            accessibility_str = str(accessibility_list) if accessibility_list else ''
+
+        # Format kremenchuk_str based on type
+        if isinstance(kremenchuk_value, list):
+            kremenchuk_str = ';'.join(kremenchuk_value)
+        else:
+            kremenchuk_str = str(kremenchuk_value)
+
+        data = {
+            'nickname': nickname,
+            'month_year': month_year,
+            'latitude': str(location_data.get('latitude', '')),
+            'longitude': str(location_data.get('longitude', '')),
+            'venue_title': location_data.get('venue_title', ''),
+            'venue_address': venue_address,
+            'enjoyment': user_data_copy.get('enjoyment', ''),
+            'purpose_visit': purpose_str,
+            'regularity': user_data_copy.get('regularity', ''),
+            'noticed_changes': user_data_copy.get('noticed_changes', ''),
+            'changes_detail': changes_detail_str,
+            'wishlist': wishlist_str,
+            'kremenchuk': kremenchuk_str,
+            'description': user_data_copy.get('description', ''),
+            'voice_submitted': user_data_copy.get('voice_submitted', ''),
+            'age': user_data_copy.get('age', ''),
+            'gender': user_data_copy.get('gender', ''),
+            'occupation': user_data_copy.get('occupation', ''),
+            'income': user_data_copy.get('income', ''),
+            'language': language,
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'visitor_type': visitor_type_str,
+            'duration_visit': user_data_copy.get('duration_visit', ''),
+            'accessibility': accessibility_str,
+            'consent': consent_str
+        }
 
         # Check for fernet availability before attempting encryption
         if fernet is None:
@@ -5327,19 +5206,15 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
         if encryption_errors:
             flow_logger.error(f"Failed to encrypt fields: {encryption_errors}")
 
-        # Use connection pool with proper retry for concurrent use
+        # Use short-lived SQLite connections with retry for concurrent use.
         db_connection_attempts = 0
         max_db_attempts = 3
         
         while db_connection_attempts < max_db_attempts:
             db_connection_attempts += 1
-            conn = None
-            
             try:
-                with db_lock:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    
+                with sqlite3.connect(db_file, check_same_thread=False) as conn:
+                    conn.execute("PRAGMA busy_timeout=5000")
                     insert_query = '''
                         INSERT INTO responses (
                             nickname, month_year, latitude, longitude, venue_title, venue_address,
@@ -5362,12 +5237,10 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
                         data['accessibility'], data['consent']
                     )
 
-                    cursor.execute(insert_query, values_tuple)
-                    conn.commit()
+                    cursor = conn.execute(insert_query, values_tuple)
 
                     # Verify row was inserted
-                    cursor.execute("SELECT last_insert_rowid()")
-                    last_id = cursor.fetchone()[0]
+                    last_id = cursor.lastrowid
                     flow_logger.info(f"Inserted row ID: {last_id}")
                     
                     # Database operation successful, exit the retry loop
@@ -5391,9 +5264,6 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
                         "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше."
                     )
                     return False
-            finally:
-                if conn:
-                    return_db_connection(conn)
 
         # Clear current experience data using thread-safe method
         with user_data_lock:
@@ -5430,7 +5300,7 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
         )
         return False
 
-def cleanup_old_voice_messages(days_to_keep=30):
+def cleanup_old_voice_messages(days_to_keep=None):
     """
     Cleans up voice messages older than the specified number of days.
     This prevents unlimited storage growth.
@@ -5439,6 +5309,8 @@ def cleanup_old_voice_messages(days_to_keep=30):
         days_to_keep (int): Number of days to keep voice messages before deleting
     """
     try:
+        if days_to_keep is None:
+            days_to_keep = voice_retention_days
         flow_logger.info(
             f"Starting voice message cleanup, keeping messages from last {days_to_keep} days")
         current_time = time.time()
@@ -5467,20 +5339,21 @@ def cleanup_old_voice_messages(days_to_keep=30):
         flow_logger.error(f"Error in voice message cleanup: {e}")
 
 
+cleanup_stop_event = threading.Event()
+
+
 def cleanup_scheduler():
     """Periodically runs cleanup tasks in the background."""
-    while True:
+    while not cleanup_stop_event.is_set():
         try:
             # Run cleanup tasks
             cleanup_stale_sessions(hours_inactive=48)
-            cleanup_old_voice_messages(days_to_keep=30)
+            cleanup_old_voice_messages(days_to_keep=voice_retention_days)
 
-            # Sleep for a day
-            time.sleep(24 * 60 * 60)
+            cleanup_stop_event.wait(cleanup_interval_seconds)
         except Exception as e:
-            flow_logger.error(f"Error in cleanup scheduler: {e}")
-            # If an error occurs, wait a bit and try again
-            time.sleep(60 * 60)  # 1 hour
+            flow_logger.exception(f"Error in cleanup scheduler: {e}")
+            cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60))
 
 
 cleanup_thread = None
@@ -5527,7 +5400,7 @@ def start_polling_with_retry():
             time.sleep(delay)
         except ApiTelegramException as e:
             # Specific handling for Telegram API errors
-            if "429" in str(e) or "too many requests" in str(e).lower():
+            if getattr(e, "error_code", None) == 429:
                 retry_after = telegram_retry_after(e, default=30)
                 flow_logger.warning(f"Rate limited by Telegram API, waiting {retry_after} seconds before retry")
                 time.sleep(retry_after + 5)  # Add a buffer

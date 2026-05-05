@@ -60,6 +60,10 @@ export UKRAINABILITY_STORAGE_DIR="/home/ubuntu/kremenchuk"
 export UKRAINABILITY_CREDENTIALS_FILE="/home/ubuntu/kremenchuk/secure/credentials"
 export UKRAINABILITY_BOT_ERRORS_LOG="bot_errors.log"
 export UKRAINABILITY_FLOW_CONTROL_LOG="flow_control.log"
+export UKRAINABILITY_LOG_MAX_BYTES="5000000"
+export UKRAINABILITY_LOG_BACKUP_COUNT="5"
+export UKRAINABILITY_VOICE_RETENTION_DAYS="30"
+export UKRAINABILITY_CLEANUP_INTERVAL_SECONDS="86400"
 ```
 
 `UKRAINABILITY_STORAGE_DIR` defaults to `/home/ubuntu/kremenchuk` to preserve
@@ -91,7 +95,9 @@ At startup, the bot creates the storage directory if needed. By default it uses:
 - Flow log: `flow_control.log`
 
 Survey response fields are encrypted before being written to SQLite. Voice
-messages are encrypted as `.enc` files.
+messages are encrypted as `.enc` files. Runtime logs use rotating file handlers,
+and encrypted voice-message cleanup defaults to 30 days unless
+`UKRAINABILITY_VOICE_RETENTION_DAYS` is set.
 
 Back up the SQLite database and the key material together. Losing the Fernet
 key, retiring keys, or `UKRAINABILITY_USER_HASH_SALT` makes historical encrypted
@@ -127,7 +133,6 @@ src/ukrainability_telegram_bot/
   config.py     # environment and legacy credentials loading
   security.py   # Fernet helpers
   storage.py    # SQLite helpers
-  state.py      # testable session/dependency helpers
   keyboards.py  # keyboard construction helper
 tests/          # pytest suite
 ```
