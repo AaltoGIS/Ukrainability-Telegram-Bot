@@ -130,6 +130,7 @@ this repository only prepares the package for building and publishing.
 src/ukrainability_telegram_bot/
   bot.py        # Telegram survey runtime
   cli.py        # ukrainability-bot entrypoint
+  cleanup.py    # voice retention and cleanup scheduler
   config.py     # environment and legacy credentials loading
   security.py   # Fernet helpers
   storage.py    # SQLite helpers

@@ -40,6 +40,7 @@ modernization commit.
 - Added `stop_cleanup_scheduler()` and locking around cleanup start/stop.
 - Kept opportunistic cleanup on startup, then wait for the configured interval between future cleanup passes.
 - After cleanup errors, retry after the shorter error backoff instead of stacking it with the normal cleanup interval.
+- Extracted cleanup scheduling and voice-retention cleanup into `cleanup.py` with temporary bind-set dependencies; Phase 2 of the planned refactor will replace this with `AppContext`.
 
 ## Remaining Review Items
 

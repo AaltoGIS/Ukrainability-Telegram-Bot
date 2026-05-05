@@ -26,6 +26,14 @@ from logging.handlers import RotatingFileHandler
 import telebot
 from telebot import types
 
+from . import cleanup as cleanup_module
+from .cleanup import (
+    cleanup_old_voice_messages,
+    cleanup_scheduler,
+    cleanup_stop_event,
+    start_cleanup_scheduler,
+    stop_cleanup_scheduler,
+)
 from .config import AppConfig, DEFAULT_STORAGE_DIR
 from .messages import messages
 from .pseudonym import hash_user_id
@@ -119,6 +127,13 @@ def configure_runtime(config):
     os.makedirs(voice_files_dir, exist_ok=True)
 
     fernet = build_fernet(config.encryption_key, list(config.retiring_encryption_keys))
+    cleanup_module.bind(
+        voice_files_dir=voice_files_dir,
+        voice_retention_days=voice_retention_days,
+        cleanup_interval_seconds=cleanup_interval_seconds,
+        flow_logger=flow_logger,
+        cleanup_stale_sessions=cleanup_stale_sessions,
+    )
 
     real_bot = telebot.TeleBot(token, threaded=True)
     if isinstance(bot, HandlerRegistry):
@@ -5299,90 +5314,6 @@ def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
                 "An error occurred while saving your data. Please try again later.")
         )
         return False
-
-def cleanup_old_voice_messages(days_to_keep=None):
-    """
-    Cleans up voice messages older than the specified number of days.
-    This prevents unlimited storage growth.
-
-    Args:
-        days_to_keep (int): Number of days to keep voice messages before deleting
-    """
-    try:
-        if days_to_keep is None:
-            days_to_keep = voice_retention_days
-        flow_logger.info(
-            f"Starting voice message cleanup, keeping messages from last {days_to_keep} days")
-        current_time = time.time()
-        cutoff_time = current_time - (days_to_keep * 24 * 60 * 60)
-        total_deleted = 0
-
-        # Walk through voice files directory
-        for root, dirs, files in os.walk(voice_files_dir):
-            for file in files:
-                if file.endswith('.enc'):  # Only process encrypted voice files
-                    file_path = os.path.join(root, file)
-                    file_time = os.path.getmtime(file_path)
-
-                    # Check if file is older than cutoff
-                    if file_time < cutoff_time:
-                        try:
-                            os.remove(file_path)
-                            total_deleted += 1
-                        except Exception as e:
-                            flow_logger.error(
-                                f"Failed to delete old voice file {file_path}: {e}")
-
-        flow_logger.info(
-            f"Voice message cleanup complete. Deleted {total_deleted} files.")
-    except Exception as e:
-        flow_logger.error(f"Error in voice message cleanup: {e}")
-
-
-cleanup_stop_event = threading.Event()
-cleanup_thread_lock = threading.Lock()
-
-
-def cleanup_scheduler():
-    """Periodically runs cleanup tasks in the background."""
-    def run_cleanup_pass():
-        cleanup_stale_sessions(hours_inactive=48)
-        cleanup_old_voice_messages(days_to_keep=voice_retention_days)
-
-    while not cleanup_stop_event.is_set():
-        try:
-            run_cleanup_pass()
-        except Exception as e:
-            flow_logger.exception(f"Error in cleanup scheduler: {e}")
-            if cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60)):
-                break
-            continue
-
-        if cleanup_stop_event.wait(cleanup_interval_seconds):
-            break
-
-
-cleanup_thread = None
-
-
-def start_cleanup_scheduler():
-    global cleanup_thread
-    with cleanup_thread_lock:
-        if cleanup_thread is None or not cleanup_thread.is_alive():
-            cleanup_stop_event.clear()
-            cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
-            cleanup_thread.start()
-    return cleanup_thread
-
-
-def stop_cleanup_scheduler(timeout=5):
-    """Signal the background cleanup thread to stop and wait briefly."""
-    with cleanup_thread_lock:
-        cleanup_stop_event.set()
-        thread = cleanup_thread
-    if thread is not None and thread.is_alive():
-        thread.join(timeout=timeout)
-
 
 # Update the start_polling_with_retry function for better error handling
 def start_polling_with_retry():
