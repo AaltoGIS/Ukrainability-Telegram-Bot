@@ -5,19 +5,15 @@ startup work behind `configure_runtime()` and `run()`.
 """
 
 # Imports and configuration
-import os
 import logging
 import time
-import datetime
-import sqlite3
 
 import telebot
 from telebot import types
 
 from .messages import messages
-from . import nicknames as legacy_nicknames
+from . import nickname_db
 from . import startup
-from .pseudonym import hash_user_id
 from . import runtime as runtime_module
 from .runtime import flow_logger
 from .survey.questions import consent as consent_question
@@ -72,10 +68,6 @@ def configure_runtime(config):
     return runtime_module.configure_runtime(config)
 
 
-# Random nickname generation data
-adjectives = legacy_nicknames.LEGACY_ADJECTIVES
-nouns = legacy_nicknames.LEGACY_NOUNS
-
 # URLs for privacy notices and participant information
 
 
@@ -102,17 +94,8 @@ class LegacyBridge:
     def _session_lock(self):
         return self.ctx.sessions.lock
 
-    def _db_file(self):
-        return str(self.ctx.config.db_file)
-
-    def _voice_files_dir(self):
-        return str(self.ctx.config.voice_files_dir)
-
-    def _fernet(self):
-        return self.ctx.fernet
-
     def get_user_hash(self, user_id):
-        return hash_user_id(user_id, self.ctx.config.user_hash_salt)
+        return nickname_db.get_user_hash(self.ctx, user_id)
 
     def register_message_id(self, user_id, message_type, message_id):
         return telegram_io_module.register_message_id(self.ctx, user_id, message_type, message_id)
@@ -151,23 +134,11 @@ class LegacyBridge:
 
     # Helper functions
     def generate_unique_nickname(self):
-        try:
-            return legacy_nicknames.generate_unique_nickname(
-                self.get_all_used_nicknames(),
-                adjectives=adjectives,
-                nouns=nouns,
-                separator=" ",
-                number_range=1000,
-                number_width=0,
-            )
-        except RuntimeError as exc:
-            raise Exception("All nickname combinations have been used.") from exc
+        return nickname_db.generate_unique_nickname(self.ctx)
 
 
     def get_all_used_nicknames(self):
-        with sqlite3.connect(self._db_file(), check_same_thread=False) as conn:
-            cursor = conn.execute('SELECT DISTINCT nickname FROM user_nicknames')
-            return {row[0] for row in cursor.fetchall()}
+        return nickname_db.get_all_used_nicknames(self.ctx)
 
 
     def create_inline_keyboard(self, options, prefix, single_select=False):
@@ -206,14 +177,7 @@ class LegacyBridge:
 
 
     def get_user_nickname(self, user_hash):
-        with sqlite3.connect(self._db_file(), check_same_thread=False) as conn:
-            cursor = conn.execute('''
-                SELECT nickname FROM user_nicknames
-                WHERE user_hash = ?
-                ORDER BY month_year DESC LIMIT 1
-            ''', (user_hash,))
-            result = cursor.fetchone()
-            return result[0] if result else None
+        return nickname_db.get_user_nickname(self.ctx, user_hash)
 
     # Add these helper functions
     # Add these helper functions with better error handling
@@ -284,13 +248,7 @@ class LegacyBridge:
 
 
     def save_user_nickname(self, user_hash, nickname):
-        month_year = datetime.datetime.now().strftime('%Y-%m')
-        with sqlite3.connect(self._db_file(), check_same_thread=False) as conn:
-            conn.execute('''
-                INSERT OR IGNORE INTO user_nicknames
-                (user_hash, nickname, month_year)
-                VALUES (?, ?, ?)
-            ''', (user_hash, nickname, month_year))
+        nickname_db.save_user_nickname(self.ctx, user_hash, nickname)
 
 
     # Add this function to the top of your script to help with error handling
