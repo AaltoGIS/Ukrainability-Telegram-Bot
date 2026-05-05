@@ -98,6 +98,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'other_wishlist': "Please specify what else you would like to improve or change:",
         'other_kremenchuk': "Please specify your own situation:",
         'regularity_question': "Do you visit this place regularly, occasionally, or is this your first time?",
+        'frequency_change_question': "Is this frequency different compared to previous years?",
         'changes_question': "Have you noticed any differences in this place since the full-scale invasion?",
         'changes_detail_question': "What exactly has changed? You can select multiple options.",
         'wishlist_question': "Would you like to improve/change something in this place/area?",
@@ -164,11 +165,21 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'accessibility_custom_instruction': (
             "You can also type your own mode of travel as a text message. When finished, press Done."
         ),
+        'changes_detail_custom_instruction': (
+            "You can also type additional changes here as a text message. When finished, press Done."
+        ),
+        'wishlist_custom_instruction': (
+            "You can also type your own suggestion as a text message. When finished, press Done."
+        ),
+        'kremenchuk_custom_instruction': (
+            "You can also type your own response as a text message. When finished, press Done."
+        ),
         'labels': {
             'location': 'Location',
             'enjoyment': 'Enjoyment',
             'purpose_visit': 'Purpose of visit',
             'regularity': 'Regularity',
+            'frequency_change': 'Frequency change',
             'accessibility': 'Accessibility',
             'noticed_changes': 'Noticed changes',
             'changes_detail': 'Changes detail',
@@ -205,6 +216,13 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
                 "Occasionally (once a year or less)",
                 "One-time visit",
                 "Visited before 2022 but not anymore",
+                "Prefer not to disclose"
+            ],
+            'frequency_change': [
+                "Yes, I visit more often now",
+                "Yes, I visit less often now or stopped visiting",
+                "No, it's about the same",
+                "I didn’t visit this place before the invasion",
                 "Prefer not to disclose"
             ],
             'noticed_changes': [
@@ -347,6 +365,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
         ),
         'regularity_question': "Ви відвідуєте це місце регулярно, час від часу, чи лише один раз?",
+        'frequency_change_question': "Чи відрізняється ця частота від попередніх років?",
         'changes_question': "Чи помітили ви якісь зміни в цьому місці після повномасштабного вторгнення?",
         'changes_detail_question': "Що саме змінилося? Ви можете обрати декілька варіантів.",
         'wishlist_question': "Що, на вашу думку, варто покращити чи змінити в цьому місці?",
@@ -412,11 +431,21 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'accessibility_custom_instruction': (
             "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
         ),
+        'changes_detail_custom_instruction': (
+            "Ви також можете ввести додаткові зміни як текстове повідомлення. Коли закінчите, натисніть Готово."
+        ),
+        'wishlist_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
+        'kremenchuk_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
         'labels': {
             'location': 'Локація',
             'enjoyment': 'Якість часу',
             'purpose_visit': 'Мета візиту',
             'regularity': 'Регулярність',
+            'frequency_change': 'Зміна частоти',
             'accessibility': 'Доступність',
             'noticed_changes': 'Помічені зміни',
             'changes_detail': 'Деталі змін',
@@ -454,6 +483,13 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
                 "Разове відвідування",
                 "Відвідував(-ла) до 2022 р., але не зараз",
                 "Надаю перевагу не вказувати"
+            ],
+            'frequency_change': [
+                "Так, зараз я відвідую частіше",
+                "Так, зараз я відвідую рідше чи зовсім не відвідую",
+                "Ні, приблизно та сама",
+                "Не відвідував(ла) це місце до вторгнення",
+                "Віддаю перевагу не вказувати"
             ],
             'noticed_changes': [
                 "Так, позитивні зміни",
