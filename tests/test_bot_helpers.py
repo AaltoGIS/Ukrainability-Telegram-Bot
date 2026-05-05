@@ -27,20 +27,51 @@ def test_callback_index_validates_prefix_and_bounds():
         bot.callback_index("consent_2", "consent", options)
 
 
-def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path):
+def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path, app_context):
     user_id = 123
-    monkeypatch.setattr(bot, "db_file", str(tmp_path / "responses.db"))
+    monkeypatch.setattr(bot.runtime_module, "_active_context", app_context)
     monkeypatch.setattr(bot, "clear_message_ids", lambda user_id: None)
     monkeypatch.setattr(bot, "send_welcome", lambda **kwargs: None)
 
-    with bot.user_data_lock:
-        bot.user_data[user_id] = {"language": "en"}
-        bot.user_profiles[user_id] = {"consent": False}
+    with app_context.sessions.lock:
+        app_context.sessions.data[user_id] = {"language": "en"}
+        app_context.sessions.profiles[user_id] = {"consent": False}
 
     try:
         assert bot.save_data_and_restart(456, user_id, "en") is True
-        assert not (tmp_path / "responses.db").exists()
+        assert not app_context.config.db_file.exists()
     finally:
-        with bot.user_data_lock:
-            bot.user_data.pop(user_id, None)
-            bot.user_profiles.pop(user_id, None)
+        with app_context.sessions.lock:
+            app_context.sessions.data.pop(user_id, None)
+            app_context.sessions.profiles.pop(user_id, None)
+
+
+def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_context):
+    user_id = 123
+    chat_id = 456
+    monkeypatch.setattr(bot.runtime_module, "_active_context", app_context)
+    app_context.sessions.data[user_id] = {
+        "language": "en",
+        "awaiting_multiple_select": "visitor_type",
+        "temp_enjoyment": "5",
+        "current_question": "enjoyment",
+        "modifying": True,
+        "modifying_field": "purpose_visit",
+        "purpose_visit": ["Walking"],
+    }
+    call = SimpleNamespace(
+        id="callback-id",
+        from_user=SimpleNamespace(id=user_id),
+        message=SimpleNamespace(chat=SimpleNamespace(id=chat_id)),
+    )
+
+    bot.handle_callback_error(call, RuntimeError("boom"), "handle_purpose_selection")
+
+    session = app_context.sessions.data[user_id]
+    assert "awaiting_multiple_select" not in session
+    assert "temp_enjoyment" not in session
+    assert "current_question" not in session
+    assert "modifying" not in session
+    assert "modifying_field" not in session
+    assert session["purpose_visit"] == ["Walking"]
+    app_context.bot.answer_callback_query.assert_called_once()

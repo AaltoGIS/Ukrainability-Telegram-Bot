@@ -1,9 +1,8 @@
 """Runtime setup, polling, and handler registry.
 
-Phase 1 refactor note: the runtime still accepts a few callback hooks from the
-legacy `bot.py` module so this module can avoid importing from `bot.py`.
-Phase 2 replaces these hooks with `AppContext`; Phase 5 removes
-`HandlerRegistry` and import-time registration.
+Phase 2 refactor note: this module owns `AppContext` construction while the
+legacy survey handlers still register at import time. Phase 5 removes
+`HandlerRegistry` and the temporary active-context bridge.
 """
 
 from __future__ import annotations
@@ -20,19 +19,21 @@ import requests
 import telebot
 from telebot.apihelper import ApiTelegramException
 
-from . import cleanup as cleanup_module
-from . import telegram_io as telegram_io_module
-from .cleanup import cleanup_old_voice_messages, start_cleanup_scheduler
+from .app import AppContext
+from .cleanup import cleanup_old_voice_messages, cleanup_stop_event, start_cleanup_scheduler
 from .config import AppConfig, DEFAULT_STORAGE_DIR
 from .security import build_fernet
+from .sessions import SessionStore
 from .telegram_io import telegram_retry_after
 
 
 class HandlerRegistry:
     """Collect handler decorators until a real TeleBot is configured.
 
-    `bind()` is intended to be called once at process startup. Calling it again
-    with a different TeleBot can duplicate handler registration.
+    `bind()` replays the collected decorators onto the real TeleBot and keeps
+    this registry object alive as a proxy. This lets legacy handler code keep
+    calling `bot.send_message(...)` through `__getattr__` until Phase 5 removes
+    import-time registration.
     """
 
     def __init__(self):
@@ -44,7 +45,14 @@ class HandlerRegistry:
         for handler_name, args, kwargs, handler_func in self._handlers:
             decorator = getattr(real_bot, handler_name)(*args, **kwargs)
             decorator(handler_func)
-        return real_bot
+        return self
+
+    def __getattr__(self, name):
+        """Fall through to the bound TeleBot for legacy `bot.X(...)` calls."""
+
+        if self._real_bot is None:
+            raise AttributeError(name)
+        return getattr(self._real_bot, name)
 
     def _register(self, handler_name, *args, **kwargs):
         def decorator(handler_func):
@@ -65,6 +73,8 @@ class HandlerRegistry:
 flow_logger = logging.getLogger('flow_control')
 flow_logger.setLevel(logging.INFO)
 
+# TODO(phase-5): remove these legacy scalar mirrors when bot.py no longer
+# depends on import-time module globals; AppContext is the canonical state.
 token = None
 local_storage_dir = DEFAULT_STORAGE_DIR
 voice_files_dir = os.path.join(local_storage_dir, 'voice_messages')
@@ -77,6 +87,15 @@ fernet = None
 # TODO(phase-5): remove with import-time registration.
 bot = HandlerRegistry()
 bot_username = None
+
+# TODO(phase-5): remove when handlers are registered against an explicit context.
+_active_context: AppContext | None = None
+
+
+def require_active_context() -> AppContext:
+    if _active_context is None:
+        raise RuntimeError("runtime.configure_runtime() must be called before use")
+    return _active_context
 
 
 def _configure_logging(config: AppConfig) -> None:
@@ -114,12 +133,8 @@ def _configure_logging(config: AppConfig) -> None:
 
 def configure_runtime(
     config: AppConfig,
-    *,
-    cleanup_stale_sessions: Callable[..., None],
-    safe_get_language: Callable[[int], str],
-    clear_callback_state: Callable[[int], None],
-) -> Any:
-    """Configure global legacy runtime objects for one bot process."""
+) -> AppContext:
+    """Configure runtime dependencies for one bot process."""
 
     global token
     global local_storage_dir
@@ -131,6 +146,7 @@ def configure_runtime(
     global user_hash_salt
     global voice_retention_days
     global cleanup_interval_seconds
+    global _active_context
 
     _configure_logging(config)
     token = config.telegram_bot_token
@@ -145,29 +161,25 @@ def configure_runtime(
     os.makedirs(voice_files_dir, exist_ok=True)
 
     fernet = build_fernet(config.encryption_key, list(config.retiring_encryption_keys))
-    cleanup_module.bind(
-        voice_files_dir=voice_files_dir,
-        voice_retention_days=voice_retention_days,
-        cleanup_interval_seconds=cleanup_interval_seconds,
-        flow_logger=flow_logger,
-        cleanup_stale_sessions=cleanup_stale_sessions,
-    )
 
     real_bot = telebot.TeleBot(token, threaded=True)
     if isinstance(bot, HandlerRegistry):
-        bot = bot.bind(real_bot)
+        bot.bind(real_bot)
     else:
         bot = real_bot
-    telegram_io_module.bind(
-        bot=bot,
-        flow_logger=flow_logger,
-        safe_get_language=safe_get_language,
-        clear_callback_state=clear_callback_state,
-    )
 
-    bot_info = bot.get_me()
+    bot_info = real_bot.get_me()
     bot_username = bot_info.username
-    return bot
+    _active_context = AppContext(
+        config=config,
+        bot=real_bot,
+        fernet=fernet,
+        sessions=SessionStore(),
+        flow_logger=flow_logger,
+        bot_username=bot_username,
+        cleanup_stop_event=cleanup_stop_event,
+    )
+    return _active_context
 
 
 def check_telegram_connection() -> bool:
@@ -231,20 +243,10 @@ def run(
     *,
     initialize_database: Callable[[], None],
     recover_user_sessions: Callable[[], None],
-    cleanup_stale_sessions: Callable[..., None],
-    safe_get_language: Callable[[int], str],
-    clear_callback_state: Callable[[int], None],
-    after_configure: Callable[[], None] | None = None,
 ) -> None:
-    config = config or AppConfig.from_env()
-    configure_runtime(
-        config,
-        cleanup_stale_sessions=cleanup_stale_sessions,
-        safe_get_language=safe_get_language,
-        clear_callback_state=clear_callback_state,
-    )
-    if after_configure is not None:
-        after_configure()
+    if config is None:
+        config = AppConfig.from_env()
+    ctx = configure_runtime(config)
 
     startup_message = f"Bot starting with username: {bot_username}"
     print(startup_message)
@@ -264,11 +266,11 @@ def run(
         flow_logger.error(f"Session recovery failed: {e}")
 
     try:
-        cleanup_old_voice_messages()
+        cleanup_old_voice_messages(ctx)
     except Exception as e:
         flow_logger.error(f"Voice message cleanup failed: {e}")
 
-    start_cleanup_scheduler()
+    start_cleanup_scheduler(ctx)
 
     consecutive_fast_failures = 0
     failure_threshold_time = 5

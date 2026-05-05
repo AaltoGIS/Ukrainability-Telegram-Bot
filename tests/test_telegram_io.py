@@ -1,53 +1,46 @@
-import logging
 from types import SimpleNamespace
-from unittest.mock import MagicMock
-
-import pytest
 
 from ukrainability_telegram_bot import telegram_io
 
 
-def test_telegram_io_raises_when_unbound(monkeypatch):
-    monkeypatch.setattr(telegram_io, "_bot", None)
-    monkeypatch.setattr(telegram_io, "_flow_logger", None)
-    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
-    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
+def test_telegram_io_safe_send_message_uses_context_bot(app_context):
+    app_context.bot.send_message.return_value = SimpleNamespace(message_id=42)
 
-    with pytest.raises(RuntimeError, match="telegram_io.bind"):
-        telegram_io.safe_send_message(123, "hello")
-
-
-def test_telegram_io_raises_when_error_helpers_are_unbound(monkeypatch):
-    monkeypatch.setattr(telegram_io, "_bot", MagicMock())
-    monkeypatch.setattr(telegram_io, "_flow_logger", logging.getLogger("test.telegram_io"))
-    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
-    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
-
-    with pytest.raises(RuntimeError, match="telegram_io.bind"):
-        telegram_io.safe_send_message(123, "hello")
-
-
-def test_telegram_io_bind_allows_safe_send_message(monkeypatch):
-    monkeypatch.setattr(telegram_io, "_bot", None)
-    monkeypatch.setattr(telegram_io, "_flow_logger", None)
-    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
-    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
-    mock_bot = MagicMock()
-    mock_bot.send_message.return_value = SimpleNamespace(message_id=42)
-
-    telegram_io.bind(
-        bot=mock_bot,
-        flow_logger=logging.getLogger("test.telegram_io"),
-        safe_get_language=lambda user_id: "en",
-        clear_callback_state=lambda user_id: None,
-    )
-
-    msg = telegram_io.safe_send_message(123, "hello")
+    msg = telegram_io.safe_send_message(app_context, 123, "hello")
 
     assert msg.message_id == 42
-    mock_bot.send_message.assert_called_once_with(
+    app_context.bot.send_message.assert_called_once_with(
         123,
         "hello",
         reply_markup=None,
         parse_mode=None,
     )
+
+
+def test_telegram_io_message_ids_live_in_session_store(app_context):
+    telegram_io.register_message_id(app_context, 123, "purpose_visit", 456)
+
+    assert telegram_io.get_message_id(app_context, 123, "purpose_visit") == 456
+
+    telegram_io.clear_message_ids(app_context, 123)
+
+    assert telegram_io.get_message_id(app_context, 123, "purpose_visit") is None
+
+
+def test_send_next_step_prompt_registers_before_send(app_context):
+    calls = []
+
+    def handler(message):
+        return message
+
+    app_context.bot.register_next_step_handler_by_chat_id.side_effect = (
+        lambda chat_id, callback: calls.append(("register", chat_id, callback))
+    )
+    app_context.bot.send_message.side_effect = (
+        lambda chat_id, text, **kwargs: calls.append(("send", chat_id, text)) or SimpleNamespace(message_id=1)
+    )
+
+    telegram_io.send_next_step_prompt(app_context, 123, "prompt", handler)
+
+    assert calls[0] == ("register", 123, handler)
+    assert calls[1] == ("send", 123, "prompt")
