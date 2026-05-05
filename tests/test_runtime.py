@@ -11,11 +11,10 @@ from ukrainability_telegram_bot.config import AppConfig
 
 @pytest.fixture(autouse=True)
 def reset_runtime(monkeypatch):
-    registry = runtime.HandlerRegistry()
-    monkeypatch.setattr(runtime, "bot", registry)
+    monkeypatch.setattr(runtime, "bot", None)
     monkeypatch.setattr(runtime, "bot_username", None)
     monkeypatch.setattr(runtime, "_active_context", None)
-    yield registry
+    yield
 
 
 def make_config(tmp_path):
@@ -31,7 +30,7 @@ def make_config(tmp_path):
     )
 
 
-def test_configure_runtime_builds_context_and_replays_registered_handlers(monkeypatch, tmp_path):
+def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tmp_path):
     config = make_config(tmp_path)
     real_bot = MagicMock()
     real_bot.get_me.return_value = SimpleNamespace(username="testbot")
@@ -48,23 +47,19 @@ def test_configure_runtime_builds_context_and_replays_registered_handlers(monkey
     monkeypatch.setattr(runtime.telebot, "TeleBot", MagicMock(return_value=real_bot))
     monkeypatch.setattr(runtime, "_configure_logging", MagicMock())
 
-    def handler(message):
-        return message
-
-    runtime.bot.message_handler(commands=["start"])(handler)
-
     ctx = runtime.configure_runtime(config)
 
     assert isinstance(ctx, AppContext)
     assert runtime.require_active_context() is ctx
-    assert runtime.bot is not real_bot
-    assert runtime.bot.send_message is real_bot.send_message
+    assert runtime.bot is real_bot
     assert ctx.bot is real_bot
     assert ctx.config is config
     assert ctx.flow_logger is runtime.flow_logger
     assert ctx.bot_username == "testbot"
     assert runtime.bot_username == "testbot"
-    assert registered_handlers == [((), {"commands": ["start"]}, handler)]
+    registered_names = {handler.__name__ for _args, _kwargs, handler in registered_handlers}
+    assert "send_welcome" in registered_names
+    assert "handle_text_messages" in registered_names
 
 
 def test_run_configures_context_before_startup_tasks(monkeypatch, tmp_path, app_context):

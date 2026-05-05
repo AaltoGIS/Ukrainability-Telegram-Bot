@@ -1,5 +1,3 @@
-import importlib
-import sys
 from collections import Counter
 
 from ukrainability_telegram_bot import runtime
@@ -42,25 +40,34 @@ EXPECTED_HANDLER_NAMES = {
 }
 
 
-def _load_legacy_with_fresh_registry(monkeypatch):
-    module_name = "ukrainability_telegram_bot._legacy"
-    previous_module = sys.modules.pop(module_name, None)
-    registry = runtime.HandlerRegistry()
-    monkeypatch.setattr(runtime, "bot", registry)
-    try:
-        importlib.import_module(module_name)
-    finally:
-        sys.modules.pop(module_name, None)
-        if previous_module is not None:
-            sys.modules[module_name] = previous_module
-    return registry
+def _registered_handlers(app_context):
+    registered = []
+
+    def message_handler(*args, **kwargs):
+        def decorator(func):
+            registered.append(("message_handler", args, kwargs, func))
+            return func
+
+        return decorator
+
+    def callback_query_handler(*args, **kwargs):
+        def decorator(func):
+            registered.append(("callback_query_handler", args, kwargs, func))
+            return func
+
+        return decorator
+
+    app_context.bot.message_handler.side_effect = message_handler
+    app_context.bot.callback_query_handler.side_effect = callback_query_handler
+    runtime.register_handlers(app_context)
+    return registered
 
 
-def test_handlers_registered_once(monkeypatch):
-    registry = _load_legacy_with_fresh_registry(monkeypatch)
+def test_handlers_registered_once(app_context):
+    registered = _registered_handlers(app_context)
     counts = Counter(
         (handler_name, handler_func.__name__)
-        for handler_name, _args, _kwargs, handler_func in registry._handlers
+        for handler_name, _args, _kwargs, handler_func in registered
     )
 
     duplicates = {
@@ -71,11 +78,11 @@ def test_handlers_registered_once(monkeypatch):
     assert duplicates == {}
 
 
-def test_no_callbacks_lost(monkeypatch):
-    registry = _load_legacy_with_fresh_registry(monkeypatch)
+def test_no_callbacks_lost(app_context):
+    registered = _registered_handlers(app_context)
     registered_names = {
         handler_func.__name__
-        for _handler_name, _args, _kwargs, handler_func in registry._handlers
+        for _handler_name, _args, _kwargs, handler_func in registered
     }
 
     assert EXPECTED_HANDLER_NAMES <= registered_names

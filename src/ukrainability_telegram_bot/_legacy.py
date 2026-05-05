@@ -67,8 +67,12 @@ from .telegram_io import (
 )
 
 
-# Temporary import-time registry; Phase 5 registers handlers after runtime setup.
-bot = runtime_module.bot
+class _RuntimeBotProxy:
+    def __getattr__(self, name):
+        return getattr(_ctx().bot, name)
+
+
+bot = _RuntimeBotProxy()
 
 
 def _ctx():
@@ -441,22 +445,6 @@ def ensure_session_valid(call):
         return True, _user_data()[user_id]['language']
 
 
-# Example of how to use these helpers in a callback handler:
-"""
-@bot.callback_query_handler(func=lambda call: call.data.startswith('example_'))
-def handle_example_callback(call):
-    try:
-        is_valid, language = ensure_session_valid(call)
-        if not is_valid:
-            return
-
-        # Regular function logic here...
-
-    except Exception as e:
-        handle_callback_error(call, e, "handle_example_callback")
-"""
-
-
 def recover_user_sessions():
     """Attempt to recover user sessions after bot restart"""
     try:
@@ -570,6 +558,110 @@ def initialize_database():
         logging.exception(f"Error initializing responses database: {e}")
         raise e
 
+
+def register_handlers(ctx):
+    """Register legacy wrapper entry points against a configured TeleBot."""
+
+    bot_instance = ctx.bot
+    bot_instance.callback_query_handler(func=lambda call: call.data == 'restart')(
+        handle_restart
+    )
+    bot_instance.message_handler(commands=['start'])(send_welcome)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('language_')
+    )(handle_language_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('consent_')
+    )(handle_consent)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == 'post_consent_continue'
+    )(handle_post_consent_continue)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('purpose_')
+    )(handle_purpose_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('enjoyment_')
+    )(handle_enjoyment_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_enjoyment"
+    )(confirm_enjoyment)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('visitor_')
+    )(handle_visitor_type_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('duration_')
+    )(handle_duration_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_duration"
+    )(confirm_duration)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('accessibility_')
+    )(handle_accessibility_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('regularity_')
+    )(handle_regularity_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_regularity"
+    )(confirm_regularity)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('frequency_change_')
+    )(handle_frequency_change_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('noticed_changes_')
+    )(handle_noticed_changes_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_noticed_changes"
+    )(confirm_noticed_changes)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('changes_detail_')
+    )(handle_changes_detail_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('wishlist_')
+    )(handle_wishlist_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('age_')
+    )(handle_age_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_age"
+    )(confirm_age)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('gender_')
+    )(handle_gender_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_gender"
+    )(confirm_gender)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('occupation_')
+    )(handle_occupation_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_occupation"
+    )(confirm_occupation)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('income_')
+    )(handle_income_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == "confirm_income"
+    )(confirm_income)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('kremenchuk_')
+    )(handle_kremenchuk_selection)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data == 'description_skip'
+    )(handle_description_skip)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('final_')
+    )(handle_final_confirmation_choice)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('modify_')
+        or call.data == 'modification_done'
+    )(handle_modification_selection_callback)
+    bot_instance.callback_query_handler(
+        func=lambda call: call.data.startswith('continue_')
+    )(handle_continue_or_stop_selection)
+    bot_instance.message_handler(func=lambda m: True, content_types=['text'])(
+        handle_text_messages
+    )
+
 # Start, language, and location handlers
 def _welcome_callbacks():
     return welcome_question.WelcomeCallbacks(
@@ -597,12 +689,10 @@ def _location_callbacks():
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'restart')
 def handle_restart(call):
     welcome_question.handle_restart(_ctx(), call, _welcome_callbacks())
 
 
-@bot.message_handler(commands=['start'])
 def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
     welcome_question.send_welcome(
         _ctx(),
@@ -614,17 +704,13 @@ def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('language_'))
 def handle_language_selection(call):
     language_question.handle_language_selection(_ctx(), call, _language_callbacks())
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('consent_'))
 def handle_consent(call):
     consent_question.handle_consent(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data ==
-                            'post_consent_continue')
 def handle_post_consent_continue(call):
     consent_question.handle_post_consent_continue(
         _ctx(),
@@ -647,7 +733,6 @@ def ask_purpose_visit(chat_id, user_id, language):
 
 
 # Updated handle_purpose_selection function
-@bot.callback_query_handler(func=lambda call: call.data.startswith('purpose_'))
 def handle_purpose_selection(call):
     purpose_question.handle_purpose_selection(
         _ctx(),
@@ -675,7 +760,6 @@ def ask_enjoyment(chat_id, user_id, language, remove_keyboard=False):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('enjoyment_'))
 def handle_enjoyment_selection(call):
     enjoyment_question.handle_enjoyment_selection(
         _ctx(),
@@ -687,7 +771,6 @@ def handle_enjoyment_selection(call):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_enjoyment")
 def confirm_enjoyment(call):
     enjoyment_question.confirm_enjoyment(
         _ctx(),
@@ -704,7 +787,6 @@ def ask_visitor_type(chat_id, user_id, language):
     visitor_type_question.ask_visitor_type(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('visitor_'))
 def handle_visitor_type_selection(call):
     visitor_type_question.handle_visitor_type_selection(
         _ctx(),
@@ -728,12 +810,10 @@ def ask_duration(chat_id, user_id, language):
     duration_question.ask_duration(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('duration_'))
 def handle_duration_selection(call):
     duration_question.handle_duration_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_duration")
 def confirm_duration(call):
     duration_question.confirm_duration(
         _ctx(),
@@ -750,8 +830,6 @@ def ask_accessibility(chat_id, user_id, language):
     accessibility_question.ask_accessibility(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(
-    func=lambda call: call.data.startswith('accessibility_'))
 def handle_accessibility_selection(call):
     accessibility_question.handle_accessibility_selection(
         _ctx(),
@@ -774,13 +852,10 @@ def ask_regularity(chat_id, user_id, language):
     regularity_question.ask_regularity(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('regularity_'))
 def handle_regularity_selection(call):
     regularity_question.handle_regularity_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data ==
-                            "confirm_regularity")
 def confirm_regularity(call):
     regularity_question.confirm_regularity(
         _ctx(),
@@ -799,8 +874,6 @@ def ask_frequency_change(chat_id, user_id, language):
     frequency_question.ask_frequency_change(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(
-    func=lambda call: call.data.startswith('frequency_change_'))
 def handle_frequency_change_selection(call):
     frequency_question.handle_frequency_change_selection(
         _ctx(),
@@ -820,14 +893,10 @@ def ask_noticed_changes(chat_id, user_id, language):
     noticed_changes_question.ask_noticed_changes(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(
-    func=lambda call: call.data.startswith('noticed_changes_'))
 def handle_noticed_changes_selection(call):
     noticed_changes_question.handle_noticed_changes_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data ==
-                            "confirm_noticed_changes")
 def confirm_noticed_changes(call):
     noticed_changes_question.confirm_noticed_changes(
         _ctx(),
@@ -846,8 +915,6 @@ def ask_changes_detail(chat_id, user_id, language):
     changes_detail_question.ask_changes_detail(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(
-    func=lambda call: call.data.startswith('changes_detail_'))
 def handle_changes_detail_selection(call):
     changes_detail_question.handle_changes_detail_selection(
         _ctx(),
@@ -871,7 +938,6 @@ def ask_wishlist(chat_id, user_id, language):
     wishlist_question.ask_wishlist(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('wishlist_'))
 def handle_wishlist_selection(call):
     wishlist_question.handle_wishlist_selection(
         _ctx(),
@@ -907,12 +973,10 @@ def ask_age(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('age_'))
 def handle_age_selection(call):
     demographics_question.handle_age_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_age")
 def confirm_age(call):
     demographics_question.confirm_age(_ctx(), call, _demographics_callbacks())
 
@@ -923,12 +987,10 @@ def ask_gender(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('gender_'))
 def handle_gender_selection(call):
     demographics_question.handle_gender_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_gender")
 def confirm_gender(call):
     demographics_question.confirm_gender(_ctx(), call, _demographics_callbacks())
 
@@ -939,12 +1001,10 @@ def ask_occupation(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('occupation_'))
 def handle_occupation_selection(call):
     demographics_question.handle_occupation_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_occupation")
 def confirm_occupation(call):
     demographics_question.confirm_occupation(_ctx(), call, _demographics_callbacks())
 
@@ -955,12 +1015,10 @@ def ask_income(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('income_'))
 def handle_income_selection(call):
     demographics_question.handle_income_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "confirm_income")
 def confirm_income(call):
     demographics_question.confirm_income(_ctx(), call, _demographics_callbacks())
 
@@ -970,7 +1028,6 @@ def ask_kremenchuk(chat_id, user_id, language):
     kremenchuk_question.ask_kremenchuk(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('kremenchuk_'))
 def handle_kremenchuk_selection(call):
     kremenchuk_question.handle_kremenchuk_selection(
         _ctx(),
@@ -1003,7 +1060,6 @@ def ask_description(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'description_skip')
 def handle_description_skip(call):
     description_question.handle_description_skip(
         _ctx(),
@@ -1058,7 +1114,6 @@ def get_responses_text(user_id, language):
     return confirmation_question.get_responses_text(_ctx(), user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('final_'))
 def handle_final_confirmation_choice(call):
     confirmation_question.handle_final_confirmation_choice(
         _ctx(), call, _confirmation_callbacks()
@@ -1071,8 +1126,6 @@ def ask_which_responses_to_modify(chat_id, user_id, language):
     )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith(
-    'modify_') or call.data == 'modification_done')
 def handle_modification_selection_callback(call):
     handle_modification_selection(call)
 
@@ -1122,14 +1175,12 @@ def ask_continue_or_stop(chat_id, user_id, language):
     restart_question.ask_continue_or_stop(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('continue_'))
 def handle_continue_or_stop_selection(call):
     restart_question.handle_continue_or_stop_selection(
         _ctx(), call, _restart_callbacks()
     )
 
 
-@bot.message_handler(func=lambda m: True, content_types=['text'])
 def handle_text_messages(m):
     """
     Handles all text messages sent by the user.

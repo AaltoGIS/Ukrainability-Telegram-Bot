@@ -18,27 +18,14 @@ from ...telegram_io import (
     safe_answer_callback,
     safe_send_message,
 )
+from ..flow import (
+    FIELD_ORDER,
+    get_question_dependencies,
+    requires_changes_detail,
+    requires_follow_up,
+    skips_changes_questions,
+)
 from .base import register
-
-
-FIELD_ORDER = [
-    "location",
-    "purpose_visit",
-    "enjoyment",
-    "visitor_type",
-    "duration_visit",
-    "accessibility",
-    "regularity",
-    "noticed_changes",
-    "changes_detail",
-    "wishlist",
-    "kremenchuk",
-    "description",
-    "age",
-    "gender",
-    "occupation",
-    "income",
-]
 
 
 @dataclass(frozen=True)
@@ -429,43 +416,6 @@ def handle_modification_selection(
     except Exception as exc:
         logging.exception(f"Error in handle_modification_selection: {exc}")
         safe_send_message(ctx, chat_id, messages[language]["error_occurred"])
-
-
-def get_question_dependencies() -> dict[str, list[str]]:
-    return {
-        "regularity": ["noticed_changes", "changes_detail"],
-        "noticed_changes": ["changes_detail"],
-    }
-
-
-def requires_follow_up(regularity_response: str) -> bool:
-    if not regularity_response:
-        return False
-    skip_options = [
-        "One-time visit",
-        "Разове відвідування",
-        "Visited before 2022 but not anymore",
-        "Відвідував(-ла) до 2022 р., але не зараз",
-        "Prefer not to disclose",
-        "Надаю перевагу не вказувати",
-    ]
-    return not any(option in regularity_response for option in skip_options)
-
-
-def skips_changes_questions(frequency_response: str) -> bool:
-    return frequency_response in {
-        "I didn't visit this place before the invasion",
-        "Не відвідував(ла) це місце до вторгнення",
-    }
-
-
-def requires_changes_detail(changes_response: str) -> bool:
-    return changes_response in {
-        "Yes, positive changes",
-        "Yes, negative changes",
-        "Так, позитивні зміни",
-        "Так, негативні зміни",
-    }
 
 
 def clear_dependent_fields(
