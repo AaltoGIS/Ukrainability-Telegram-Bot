@@ -28,7 +28,10 @@ from .survey.persistence import (
 )
 from .survey.questions import consent as consent_question
 from .survey.questions import description as description_question
+from .survey.questions import language as language_question
+from .survey.questions import location as location_question
 from .survey.questions import purpose as purpose_question
+from .survey.questions import welcome as welcome_question
 from .survey.questions.base import (
     ConsentCallbacks,
     DescriptionCallbacks,
@@ -39,7 +42,6 @@ from .telegram_io import (
     callback_index,
     callback_suffix,
     escape_html,
-    redacted_coordinate,
     telegram_retry_after,
 )
 
@@ -547,228 +549,53 @@ def initialize_database():
         logging.exception(f"Error initializing responses database: {e}")
         raise e
 
-# Start and restart handlers
+# Start, language, and location handlers
+def _welcome_callbacks():
+    return welcome_question.WelcomeCallbacks(
+        update_activity_timestamp=update_activity_timestamp,
+        get_user_hash=get_user_hash,
+        get_user_nickname=get_user_nickname,
+        generate_unique_nickname=generate_unique_nickname,
+        save_user_nickname=save_user_nickname,
+        send_welcome=send_welcome,
+    )
+
+
+def _language_callbacks():
+    return language_question.LanguageCallbacks(
+        location_handler=handle_location_step,
+    )
+
+
+def _location_callbacks():
+    return location_question.LocationCallbacks(
+        update_activity_timestamp=update_activity_timestamp,
+        send_welcome=send_welcome,
+        ask_purpose_visit=ask_purpose_visit,
+        location_handler=handle_location_step,
+    )
+
+
 @bot.callback_query_handler(func=lambda call: call.data == 'restart')
 def handle_restart(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-
-        # Acknowledge the restart action
-        bot.answer_callback_query(call.id, "Restarting the survey.")
-
-        # Restart the survey by calling send_welcome with 'restart' parameter
-        send_welcome(chat_id=chat_id, user_id=user_id, start_param='restart')
-    except Exception as e:
-        logging.exception(f"Error in handle_restart: {e}")
-        bot.send_message(
-            chat_id,
-            "An error occurred while restarting. Please try again later.")
+    welcome_question.handle_restart(_ctx(), call, _welcome_callbacks())
 
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message=None, chat_id=None, user_id=None, start_param=None):
-    try:
-        if message:
-            chat_id = message.chat.id
-            user_id = message.from_user.id
-            update_activity_timestamp(user_id)
-
-            # Check if /start has parameters
-            if message.text.startswith('/start '):
-                start_param = message.text.split(' ', 1)[1]
-            else:
-                start_param = start_param
-        elif chat_id and user_id:
-            # start_param is already provided (e.g., 'restart')
-            pass
-        else:
-            # Cannot proceed without chat_id and user_id
-            return
-
-        user_hash = get_user_hash(user_id)
-        nickname = get_user_nickname(user_hash)
-        if not nickname:
-            nickname = generate_unique_nickname()
-            save_user_nickname(user_hash, nickname)
-
-        if user_id not in _user_data():
-            _user_data()[user_id] = {}
-
-        _user_data()[user_id]['nickname'] = nickname
-
-        if start_param == 'restart':
-            # Reset experience-related data but keep language and profile data
-            keys_to_remove = [
-                'location', 'enjoyment', 'purpose_visit', 'regularity',
-                'frequency_change', 'noticed_changes', 'changes_detail',
-                'wishlist', 'kremenchuk', 'accessibility', 'description',
-                'voice_submitted'
-            ]
-            for key in keys_to_remove:
-                _user_data()[user_id].pop(key, None)
-
-        # Check if user has a language set
-        if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-            language = _user_profiles()[user_id]['language']
-            _user_data()[user_id]['language'] = language
-
-            # Check if consent is given
-            if 'consent' in _user_profiles()[user_id]:
-                if _user_profiles()[user_id]['consent'] is False:
-                    # User previously disagreed, now restarting -> show consent
-                    # given message with Continue button
-                    _user_profiles()[user_id]['consent'] = True
-                    consent_message = messages[language]['consent_given'].format(
-                        nickname=f"<b>{escape_html(nickname)}</b>")
-                    inline_kb = types.InlineKeyboardMarkup()
-                    continue_text = "Continue" if language == 'en' else "Продовжити"
-                    continue_button = types.InlineKeyboardButton(
-                        continue_text, callback_data='post_consent_continue')
-                    inline_kb.add(continue_button)
-                    bot.send_message(
-                        chat_id,
-                        consent_message,
-                        parse_mode='HTML',
-                        reply_markup=inline_kb)
-                    return
-                else:
-                    # consent true, show consent given message with Continue button as well
-                    # This ensures consistency so user must press Continue
-                    consent_message = messages[language]['consent_given'].format(
-                        nickname=f"<b>{escape_html(nickname)}</b>")
-                    inline_kb = types.InlineKeyboardMarkup()
-                    continue_text = "Continue" if language == 'en' else "Продовжити"
-                    continue_button = types.InlineKeyboardButton(
-                        continue_text, callback_data='post_consent_continue')
-                    inline_kb.add(continue_button)
-                    bot.send_message(
-                        chat_id,
-                        consent_message,
-                        parse_mode='HTML',
-                        reply_markup=inline_kb)
-                    return
-            else:
-                # No consent yet, ask for it
-                options = messages[language]['consent_options']
-                inline_kb = types.InlineKeyboardMarkup(row_width=2)
-                buttons = [
-                    types.InlineKeyboardButton(
-                        text=opt,
-                        callback_data=f"consent_{i}") for i,
-                    opt in enumerate(options)]
-                inline_kb.add(*buttons)
-                bot.send_message(
-                    chat_id,
-                    messages[language]['project_intro'],
-                    parse_mode='HTML',
-                    reply_markup=inline_kb
-                )
-        else:
-            # Ask language first
-            inline_kb = types.InlineKeyboardMarkup(row_width=2)
-            english_button = types.InlineKeyboardButton(
-                'English', callback_data='language_en')
-            ukrainian_button = types.InlineKeyboardButton(
-                'Українська', callback_data='language_uk')
-            inline_kb.add(english_button, ukrainian_button)
-
-            bot.send_message(
-                chat_id,
-                messages['en']['welcome'] + "\n" + messages['uk']['welcome'],
-                reply_markup=inline_kb
-            )
-    except Exception as e:
-        logging.exception(f"Error in send_welcome: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    welcome_question.send_welcome(
+        _ctx(),
+        callbacks=_welcome_callbacks(),
+        message=message,
+        chat_id=chat_id,
+        user_id=user_id,
+        start_param=start_param,
+    )
 
 
-
-
-# Language and consent handlers
 @bot.callback_query_handler(func=lambda call: call.data.startswith('language_'))
 def handle_language_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        data = callback_suffix(call.data, "purpose")
-
-        # Initialize _user_data() for this user if it doesn't exist
-        if user_id not in _user_data():
-            _user_data()[user_id] = {}
-
-        if data == 'en':
-            _user_data()[user_id]['language'] = 'en'
-        elif data == 'uk':
-            _user_data()[user_id]['language'] = 'uk'
-        else:
-            # Invalid selection
-            bot.answer_callback_query(call.id, "Invalid selection.")
-            return
-
-        # Rest of the function remains the same
-        language = _user_data()[user_id]['language']
-        # Acknowledge the selection
-        bot.answer_callback_query(
-            call.id, f"Language set to {language.upper()}.")
-
-        # Remove the inline keyboard
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=None)
-
-        # Confirm language selection
-        bot.send_message(chat_id, messages[language]['language_selected'])
-
-        # Store language in _user_profiles()
-        _user_profiles().setdefault(user_id, {})['language'] = language
-
-        # Check if user has already given consent
-        if user_id in _user_profiles() and 'consent' in _user_profiles()[user_id]:
-            # If consent is already given, skip the consent question
-            if _user_profiles()[user_id]['consent']:
-                # Create a cleaner transition
-                time.sleep(0.5)  # Small delay for better UX
-                # Send location request directly
-                send_next_step_prompt(
-                    chat_id,
-                    messages[language]['send_location'],
-                    handle_location_step)
-            else:
-                # User previously declined, ask again
-                options = messages[language]['consent_options']
-                inline_kb = types.InlineKeyboardMarkup(row_width=2)
-                buttons = [
-                    types.InlineKeyboardButton(text=option, callback_data=f"consent_{idx}")
-                    for idx, option in enumerate(options)
-                ]
-                inline_kb.add(*buttons)
-                bot.send_message(
-                    chat_id,
-                    messages[language]['project_intro'],
-                    parse_mode='HTML',
-                    reply_markup=inline_kb
-                )
-        else:
-            # Send introductory message and request consent using
-            # InlineKeyboard
-            options = messages[language]['consent_options']
-            inline_kb = types.InlineKeyboardMarkup(row_width=2)
-            buttons = [
-                types.InlineKeyboardButton(text=option, callback_data=f"consent_{idx}")
-                for idx, option in enumerate(options)
-            ]
-            inline_kb.add(*buttons)
-            bot.send_message(
-                chat_id,
-                messages[language]['project_intro'],
-                parse_mode='HTML',
-                reply_markup=inline_kb
-            )
-    except Exception as e:
-        logging.exception(f"Error in handle_language_selection: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    language_question.handle_language_selection(_ctx(), call, _language_callbacks())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('consent_'))
 def handle_consent(call):
@@ -788,163 +615,7 @@ def handle_post_consent_continue(call):
 
 
 def handle_location_step(message):
-    try:
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        update_activity_timestamp(user_id)
-
-        # Ensure the user has selected a language
-        language = None
-        if user_id in _user_data() and 'language' in _user_data()[user_id]:
-            language = _user_data()[user_id]['language']
-        elif user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-            language = _user_profiles()[user_id]['language']
-            # Initialize _user_data() if needed
-            if user_id not in _user_data():
-                _user_data()[user_id] = {}
-            _user_data()[user_id]['language'] = language
-        else:
-            # Cannot proceed without language
-            bot.send_message(
-                chat_id,
-                "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-            return
-
-        # Hide keyboard after receiving message
-        remove_keyboard = types.ReplyKeyboardRemove()
-
-        if message.content_type == 'location':
-            latitude = message.location.latitude
-            longitude = message.location.longitude
-
-            # Try to extract venue information if available in message (for
-            # newer Telegram clients)
-            venue_title = ''
-            venue_address = ''
-
-            # If the message has venue details (Telegram might send this for
-            # dropped pins)
-            if hasattr(message, 'venue') and message.venue:
-                if hasattr(message.venue, 'title') and message.venue.title:
-                    venue_title = message.venue.title
-                if hasattr(message.venue, 'address') and message.venue.address:
-                    venue_address = message.venue.address
-
-            # Store all available location data
-            _user_data()[user_id]['location'] = {
-                'latitude': latitude,
-                'longitude': longitude,
-                'venue_title': venue_title,
-                'venue_address': venue_address
-            }
-
-            # Debug log for coordinates
-            flow_logger.info(
-                "Coordinate location received - "
-                f"lat~{redacted_coordinate(latitude)}, long~{redacted_coordinate(longitude)}")
-
-            # Enhanced confirmation message with emoji and coordinate display
-            if venue_title or venue_address:
-                location_info = f"{venue_title}, {venue_address}" if venue_title and venue_address else (
-                    venue_title or venue_address)
-                location_received_msg = f"📍 {messages[language]['location_received']}: {location_info}"
-            else:
-                location_received_msg = f"📍 {messages[language]['location_received']}: {latitude}, {longitude}"
-
-            bot.send_message(
-                chat_id,
-                location_received_msg,
-                reply_markup=remove_keyboard)
-
-            # Now ask for purpose of visit first
-            ask_purpose_visit(chat_id, user_id, language)
-
-        elif message.content_type == 'venue':
-            # Venue contains more detailed location information
-            latitude = message.venue.location.latitude
-            longitude = message.venue.location.longitude
-            venue_title = message.venue.title
-            venue_address = message.venue.address
-
-            _user_data()[user_id]['location'] = {
-                'latitude': latitude,
-                'longitude': longitude,
-                'venue_title': venue_title,
-                'venue_address': venue_address
-            }
-
-            # Debug log for venue location
-            flow_logger.info(
-                "Venue location received; title/address redacted")
-
-            # Enhanced confirmation message with emoji and venue info
-            location_received_msg = f"📍 {messages[language]['location_received']}: {venue_title}, {venue_address}"
-            bot.send_message(
-                chat_id,
-                location_received_msg,
-                reply_markup=remove_keyboard)
-
-            # Now ask for purpose of visit
-            ask_purpose_visit(chat_id, user_id, language)
-
-        elif message.content_type == 'text':
-            # Handle free text input for location
-            location_text = message.text.strip()
-
-            # Check if it's a command (like /start) and handle it appropriately
-            if location_text.startswith('/'):
-                if location_text.startswith('/start'):
-                    send_welcome(message)
-                    return
-                else:
-                    bot.register_next_step_handler_by_chat_id(
-                        chat_id, handle_location_step)
-                    bot.send_message(
-                        chat_id, messages[language]['please_send_location'])
-                    return
-
-            flow_logger.info("Text location received; content redacted")
-
-            # Store in location data with empty coordinates but populated
-            # venue_address
-            _user_data()[user_id]['location'] = {
-                'latitude': '',  # Empty as exact coordinates are not provided
-                'longitude': '',  # Empty as exact coordinates are not provided
-                'venue_title': '',
-                'venue_address': location_text  # Store the text input in venue_address
-            }
-
-            flow_logger.info("Text location stored in _user_data(); content redacted")
-
-            # Confirmation message
-            location_received_msg = f"📍 {messages[language]['location_received']}: {location_text}"
-            bot.send_message(
-                chat_id,
-                location_received_msg,
-                reply_markup=remove_keyboard)
-
-            # Now ask for purpose of visit
-            ask_purpose_visit(chat_id, user_id, language)
-
-        else:
-            send_next_step_prompt(
-                chat_id,
-                messages[language]['please_send_location'],
-                handle_location_step)
-    except Exception as e:
-        logging.exception(f"Error in handle_location_step: {e}")
-        try:
-            language = "en"  # Default fallback
-            if user_id in _user_data() and 'language' in _user_data()[user_id]:
-                language = _user_data()[user_id]['language']
-            error_msg = messages[language].get(
-                'error_occurred', "An error occurred. Please try again later.")
-            bot.reply_to(message, error_msg)
-        except Exception:
-            # Fallback if language is not accessible
-            bot.reply_to(
-                message,
-                "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.")
+    location_question.handle_location_step(_ctx(), message, _location_callbacks())
 
 
 
