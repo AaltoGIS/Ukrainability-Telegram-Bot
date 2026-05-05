@@ -35,6 +35,11 @@ RESPONSE_COLUMNS = (
     "consent",
 )
 
+PLAINTEXT_COLUMNS = ("timestamp",)
+ENCRYPTED_COLUMNS = tuple(
+    column for column in RESPONSE_COLUMNS if column not in PLAINTEXT_COLUMNS
+)
+
 
 def initialize_database(db_file: Path) -> None:
     db_file.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +123,26 @@ def get_all_used_nicknames(db_file: Path) -> set[str]:
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         cursor = conn.execute("SELECT DISTINCT nickname FROM user_nicknames")
         return {row[0] for row in cursor.fetchall()}
+
+
+def insert_response(db_file: Path, row: dict[str, str]) -> int:
+    """Insert one response row and return the SQLite row id."""
+
+    missing = [column for column in RESPONSE_COLUMNS if column not in row]
+    if missing:
+        joined = ", ".join(missing)
+        raise ValueError(f"Missing response columns: {joined}")
+
+    placeholders = ", ".join("?" for _ in RESPONSE_COLUMNS)
+    columns = ", ".join(RESPONSE_COLUMNS)
+    values = tuple(row[column] for column in RESPONSE_COLUMNS)
+    with sqlite3.connect(db_file, check_same_thread=False) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
+        cursor = conn.execute(
+            f"INSERT INTO responses ({columns}) VALUES ({placeholders})",
+            values,
+        )
+        return int(cursor.lastrowid)
 
 
 ALLOWED_TABLES = {"responses", "user_nicknames"}

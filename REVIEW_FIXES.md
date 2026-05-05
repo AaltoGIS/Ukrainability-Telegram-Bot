@@ -44,6 +44,7 @@ modernization commit.
 - Retired the temporary `cleanup.bind()` and `telegram_io.bind()` patterns; both modules now receive `AppContext` explicitly.
 - Removed the legacy `user_data`, `user_profiles`, and lock globals from `bot.py`; remaining survey handlers access session state through `ctx.sessions`.
 - Extracted runtime configuration, logging setup, polling retry logic, and the temporary `HandlerRegistry` into `runtime.py`; `bot.py` now keeps wrappers so the CLI and legacy imports continue to work.
+- Extracted response row construction, encryption, and insertion retry orchestration into `survey/persistence.py`; `storage.py` now defines the explicit plaintext/encrypted column partition.
 
 ## Remaining Review Items
 

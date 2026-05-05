@@ -1,10 +1,13 @@
 import sqlite3
 
 from ukrainability_telegram_bot.storage import (
+    ENCRYPTED_COLUMNS,
+    PLAINTEXT_COLUMNS,
     RESPONSE_COLUMNS,
     get_all_used_nicknames,
     get_user_nickname,
     initialize_database,
+    insert_response,
     save_user_nickname,
     table_columns,
 )
@@ -55,3 +58,26 @@ def test_table_columns_rejects_unknown_table(tmp_path):
         assert "Unsupported table name" in str(exc)
     else:
         raise AssertionError("Expected unsafe table name to be rejected")
+
+
+def test_response_column_partition_matches_current_save_behavior():
+    assert PLAINTEXT_COLUMNS == ("timestamp",)
+    assert set(ENCRYPTED_COLUMNS) == set(RESPONSE_COLUMNS) - set(PLAINTEXT_COLUMNS)
+    assert "consent" in ENCRYPTED_COLUMNS
+    assert "language" in ENCRYPTED_COLUMNS
+    assert "nickname" in ENCRYPTED_COLUMNS
+
+
+def test_insert_response_persists_row_in_schema_order(tmp_path):
+    db_file = tmp_path / "responses_kremenchuk.db"
+    initialize_database(db_file)
+    row = {column: f"value-{column}" for column in RESPONSE_COLUMNS}
+
+    row_id = insert_response(db_file, row)
+
+    with sqlite3.connect(db_file) as conn:
+        stored = conn.execute(
+            "SELECT nickname, timestamp, consent FROM responses WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+    assert stored == ("value-nickname", "value-timestamp", "value-consent")
