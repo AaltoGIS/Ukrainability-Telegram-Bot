@@ -12,7 +12,9 @@ messages = {
     'en': {
         'welcome': "Welcome! Please select a language.",
         'select_language': "Please select a language:",
+        'language_buttons': ["English", "Українська"],
         'language_selected': "Language set to English.",
+        'language_callback_ack': "Language set to {language}.",
         'project_intro': f'''Participation confirmation
 Participation is voluntary. You may stop at any time, but information gathered until then can be used as described in the <a href="{PRIVACY_NOTICE_URL_EN}">privacy notice</a> and <a href="{PARTICIPANT_INFORMATION_SHEET_URL_EN}">participant information sheet</a>. Please do not participate if you are in 1) temporarily occupied territories or 2) areas near the frontline. Do not send information related to military activities. For persons aged 18+ only.
 
@@ -27,6 +29,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'consent_acknowledgement': "Thank you for agreeing to participate!",
         'consent_thanks': "Thank you for your time.",
         'restart_button': "Restart",
+        'restart_acknowledgement': "Restarting the survey.",
+        'restart_error': "An error occurred while restarting. Please try again later.",
         'continue_button': "Continue",
         'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
@@ -133,6 +137,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'you_selected': "You selected:",
         'voice_message_submitted': "Voice message submitted.",
         'error_occurred': "An error occurred. Please try again later.",
+        'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
         'invalid_selection': "Invalid selection.",
         'your_response': "Your response:",
         'confirm_responses': "Please review your responses above. Do you confirm them or would like to modify anything?",
@@ -246,7 +251,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
     'uk': {
         'welcome': "Ласкаво просимо! Будь ласка, оберіть мову.",
         'select_language': "Будь ласка, оберіть мову:",
+        'language_buttons': ["English", "Українська"],
         'language_selected': "Мову встановлено на українську.",
+        'language_callback_ack': "Мову встановлено на {language}.",
         'project_intro': f'''Підтвердження участі
 Участь є добровільною. Ви можете припинити в будь-який час, але вже зібрана інформація може використовуватись, як описано в <a href="{PRIVACY_NOTICE_URL_UK}">політиці конфіденційності</a> та <a href="{PARTICIPANT_INFORMATION_SHEET_URL_UK}">інформаційному листі учасника</a>. Не беріть участь, якщо ви на 1) тимчасово окупованих або 2) прифронтових територіях. Не надсилайте інформацію, пов'язану з воєнною активністю. Тільки для осіб від 18 років.
 
@@ -261,6 +268,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'consent_acknowledgement': "Дякуємо за вашу згоду на участь!",
         'consent_thanks': "Дякуємо за ваш час.",
         'restart_button': "Перезапустити",
+        'restart_acknowledgement': "Перезапуск опитування.",
+        'restart_error': "Виникла помилка під час перезапуску. Будь ласка, спробуйте пізніше.",
         'continue_button': "Продовжити",
         'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
@@ -365,6 +374,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'you_selected': "Ви обрали:",
         'voice_message_submitted': "Голосове повідомлення надіслано.",
         'error_occurred': "Виникла помилка. Будь ласка, спробуйте пізніше.",
+        'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
         'invalid_selection': "Недійсний вибір.",
         'your_response': "Ваша відповідь:",
         'confirm_responses': "Ви підтверджуєте відповіді, чи хотіли б щось змінити?",
