@@ -68,6 +68,7 @@ from .telegram_io import (
 
 
 class _RuntimeBotProxy:
+    # TODO(phase-6): remove once remaining legacy helpers take ctx explicitly.
     def __getattr__(self, name):
         return getattr(_ctx().bot, name)
 
