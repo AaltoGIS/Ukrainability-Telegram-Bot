@@ -92,6 +92,14 @@ bot_username = None
 _active_context: AppContext | None = None
 
 
+def _load_legacy_flow() -> Any:
+    """Import legacy survey handlers so their temporary decorators are registered."""
+
+    from .survey import legacy_flow
+
+    return legacy_flow
+
+
 def require_active_context() -> AppContext:
     if _active_context is None:
         raise RuntimeError("runtime.configure_runtime() must be called before use")
@@ -149,6 +157,7 @@ def configure_runtime(
     global _active_context
 
     _configure_logging(config)
+    _load_legacy_flow()
     token = config.telegram_bot_token
     local_storage_dir = str(config.storage_dir)
     voice_files_dir = str(config.voice_files_dir)
@@ -241,11 +250,16 @@ def start_polling_with_retry() -> bool:
 def run(
     config: AppConfig | None = None,
     *,
-    initialize_database: Callable[[], None],
-    recover_user_sessions: Callable[[], None],
+    initialize_database: Callable[[], None] | None = None,
+    recover_user_sessions: Callable[[], None] | None = None,
 ) -> None:
     if config is None:
         config = AppConfig.from_env()
+    legacy_flow = _load_legacy_flow()
+    if initialize_database is None:
+        initialize_database = legacy_flow.initialize_database
+    if recover_user_sessions is None:
+        recover_user_sessions = legacy_flow.recover_user_sessions
     ctx = configure_runtime(config)
 
     startup_message = f"Bot starting with username: {bot_username}"
