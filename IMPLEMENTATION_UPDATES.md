@@ -53,6 +53,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 | `logging.FileHandler('flow_control.log')` — unbounded log growth. | `RotatingFileHandler` with `UKRAINABILITY_LOG_MAX_BYTES` / `UKRAINABILITY_LOG_BACKUP_COUNT` (defaults 5 MB × 5). |
 | Encrypted response columns still left operational metadata visible through SQLite row order and timestamps. | Preserved for compatibility: `responses.id` and `responses.timestamp` remain plaintext metadata, while all other response columns are encrypted. Treat DB access as sensitive even without the Fernet key. |
 | `cleanup_scheduler` ran `while True: cleanup(); time.sleep(24*60*60)` — no graceful shutdown, restart hammered cleanup, exception backoff stacked with the next normal sleep. | `cleanup.py` owns `cleanup_stop_event` + `cleanup_thread_lock` and exposes `start_cleanup_scheduler` / `stop_cleanup_scheduler`. The loop runs cleanup, then `wait()`s; exception branch uses its own bounded `wait()` with explicit `continue` so back-offs never stack. Interval and retention configurable. |
+| Stale session cleanup took a snapshot under lock, then removed stale users later. | `SessionStore.evict_inactive` holds one session lock through snapshot, iteration, and removal so stale-session cleanup is atomic. |
 | Voice retention hard-coded to 30 days. | Configurable via `UKRAINABILITY_VOICE_RETENTION_DAYS`. |
 | Cleanup interval hard-coded. | Configurable via `UKRAINABILITY_CLEANUP_INTERVAL_SECONDS`. |
 
