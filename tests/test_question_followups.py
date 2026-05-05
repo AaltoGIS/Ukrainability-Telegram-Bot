@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from ukrainability_telegram_bot.messages import messages
 from ukrainability_telegram_bot.survey.questions import (
     changes_detail,
+    frequency,
     kremenchuk,
     noticed_changes,
     wishlist,
@@ -11,6 +12,7 @@ from ukrainability_telegram_bot.survey.questions import (
 from ukrainability_telegram_bot.survey.questions.changes_detail import (
     ChangesDetailCallbacks,
 )
+from ukrainability_telegram_bot.survey.questions.frequency import FrequencyCallbacks
 from ukrainability_telegram_bot.survey.questions.kremenchuk import KremenchukCallbacks
 from ukrainability_telegram_bot.survey.questions.noticed_changes import (
     NoticedChangesCallbacks,
@@ -58,6 +60,33 @@ def test_confirm_noticed_changes_positive_asks_for_details(app_context):
         messages["en"]["response_confirmed"],
     )
     ask_changes_detail.assert_called_once_with(456, user_id, "en")
+
+
+def test_frequency_change_did_not_visit_before_skips_to_wishlist(app_context):
+    user_id = 123
+    did_not_visit_idx = 3
+    selected = messages["en"]["options"]["frequency_change"][did_not_visit_idx]
+    app_context.sessions.set_data(user_id, "language", "en")
+    ask_noticed_changes = MagicMock()
+    ask_wishlist = MagicMock()
+    callbacks = FrequencyCallbacks(
+        ask_noticed_changes=ask_noticed_changes,
+        ask_wishlist=ask_wishlist,
+        ask_final_confirmation=MagicMock(),
+        clear_dependent_fields=MagicMock(return_value=[]),
+        get_anonymous_id=MagicMock(return_value="anon"),
+    )
+
+    frequency.handle_frequency_change_selection(
+        app_context,
+        _call(f"frequency_change_{did_not_visit_idx}", user_id=user_id),
+        callbacks,
+    )
+
+    assert app_context.sessions.get_data(user_id, "frequency_change") == selected
+    assert app_context.sessions.get_data(user_id, "noticed_changes") == selected
+    ask_wishlist.assert_called_once_with(456, user_id, "en")
+    ask_noticed_changes.assert_not_called()
 
 
 def test_changes_detail_done_with_selection_continues_to_wishlist(app_context):
