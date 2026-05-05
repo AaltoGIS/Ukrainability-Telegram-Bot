@@ -78,3 +78,18 @@ def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_co
     assert "modifying_field" not in session
     assert session["purpose_visit"] == ["Walking"]
     app_context.bot.answer_callback_query.assert_called_once()
+
+
+def test_cleanup_stale_sessions_delegates_to_session_store(monkeypatch, app_context):
+    bridge = bot.create_legacy_bridge(app_context)
+    calls = []
+
+    def evict_inactive(hours):
+        calls.append(hours)
+        return [123, 456]
+
+    monkeypatch.setattr(app_context.sessions, "evict_inactive", evict_inactive)
+
+    bridge.cleanup_stale_sessions(hours_inactive=12)
+
+    assert calls == [12]

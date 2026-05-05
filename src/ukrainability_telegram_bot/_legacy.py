@@ -6,7 +6,6 @@ startup work behind `configure_runtime()` and `run()`.
 
 # Imports and configuration
 import logging
-import time
 
 import telebot
 from telebot import types
@@ -346,31 +345,12 @@ class LegacyBridge:
         try:
             flow_logger.info(
                 f"Starting stale session cleanup, removing sessions inactive for {hours_inactive} hours")
-            current_time = time.time()
-            cutoff_time = current_time - (hours_inactive * 60 * 60)
-            users_to_remove = []
-
-            # First identify which users to remove from a lock-protected snapshot.
-            with self._session_lock():
-                user_items = list(self._user_data().items())
-
-            for user_id, data in user_items:
-                last_activity = data.get('last_activity_time', 0)
-                if last_activity < cutoff_time:
-                    users_to_remove.append(user_id)
-
-            # Then remove them
-            for user_id in users_to_remove:
-                try:
-                    with self._session_lock():
-                        self._user_data().pop(user_id, None)
-                    flow_logger.info(f"Removed stale session for user {user_id}")
-                except Exception as e:
-                    flow_logger.error(
-                        f"Error removing session for user {user_id}: {e}")
+            removed_users = self.ctx.sessions.evict_inactive(hours_inactive)
+            for user_id in removed_users:
+                flow_logger.info(f"Removed stale session for user {user_id}")
 
             flow_logger.info(
-                f"Stale session cleanup complete. Removed {len(users_to_remove)} sessions.")
+                f"Stale session cleanup complete. Removed {len(removed_users)} sessions.")
         except Exception as e:
             flow_logger.error(f"Error in stale session cleanup: {e}")
 
