@@ -10,17 +10,16 @@ import logging
 import time
 import datetime
 import sqlite3
-from pathlib import Path
 
 import telebot
 from telebot import types
 
 from .messages import messages
 from . import nicknames as legacy_nicknames
+from . import startup
 from .pseudonym import hash_user_id
 from . import runtime as runtime_module
 from .runtime import flow_logger
-from .storage import initialize_database as initialize_storage_database
 from .survey.questions import consent as consent_question
 from .survey.questions import description as description_question
 from .survey.questions import accessibility as accessibility_question
@@ -378,54 +377,6 @@ class LegacyBridge:
             return True, self._user_data()[user_id]['language']
 
 
-    def recover_user_sessions(self):
-        """Attempt to recover user sessions after bot restart"""
-        try:
-            flow_logger.info("Attempting to recover user sessions...")
-
-            # Get a snapshot of current self._user_data() to avoid modification during
-            # iteration
-            with self._session_lock():
-                users_to_recover = list(self._user_data().keys())
-            recovered_count = 0
-
-            for user_id in users_to_recover:
-                try:
-                    # Ensure basic data structures exist
-                    with self._session_lock():
-                        session = self._user_data().get(user_id, {})
-                    if 'language' not in session:
-                        language = self.get_user_profile(user_id, 'language')
-                        if language:
-                            self.set_user_data(user_id, 'language', language)
-                        else:
-                            # Can't recover without language
-                            continue
-
-                    # Restore nickname from database if needed
-                    if 'nickname' not in self.get_user_data(user_id):
-                        user_hash = self.get_user_hash(user_id)
-                        nickname = self.get_user_nickname(user_hash)
-                        if nickname:
-                            self.set_user_data(user_id, 'nickname', nickname)
-
-                    # Mark recovery state - will be used to inform users later
-                    self.set_user_data(user_id, 'session_recovered', True)
-                    recovered_count += 1
-
-                    flow_logger.info(f"Recovered session for user {user_id}")
-
-                except Exception as inner_e:
-                    flow_logger.error(
-                        f"Error recovering session for user {user_id}: {inner_e}")
-
-            flow_logger.info(
-                f"Session recovery complete. Recovered {recovered_count} sessions.")
-
-        except Exception as e:
-            flow_logger.error(f"Error in session recovery process: {e}")
-
-
     def cleanup_stale_sessions(self, hours_inactive=48):
         """
         Remove stale user sessions to free memory.
@@ -467,29 +418,7 @@ class LegacyBridge:
 
 
     def update_activity_timestamp(self, user_id):
-        """
-        Update the last activity timestamp for a user.
-        This helps identify stale sessions.
-
-        Args:
-            user_id (int): User identifier
-        """
-        with self._session_lock():
-            if user_id in self._user_data():
-                self._user_data()[user_id]['last_activity_time'] = time.time()
-            else:
-                # If user doesn't exist in self._user_data(), initialize it
-                self._user_data()[user_id] = {'last_activity_time': time.time()}
-
-
-    # Database functions
-    def initialize_database(self):
-        try:
-            initialize_storage_database(Path(self._db_file()))
-            flow_logger.info("Database initialized successfully")
-        except Exception as e:
-            logging.exception(f"Error initializing responses database: {e}")
-            raise e
+        startup.update_activity_timestamp(self.ctx, user_id)
 
 
     def register_handlers(self):
@@ -1259,11 +1188,3 @@ def create_legacy_bridge(ctx):
 
 def register_handlers(ctx):
     return create_legacy_bridge(ctx).register_handlers()
-
-
-def initialize_database(ctx):
-    return create_legacy_bridge(ctx).initialize_database()
-
-
-def recover_user_sessions(ctx):
-    return create_legacy_bridge(ctx).recover_user_sessions()

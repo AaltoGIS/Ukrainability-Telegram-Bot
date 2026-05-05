@@ -18,6 +18,7 @@ from .cleanup import cleanup_old_voice_messages, cleanup_stop_event, start_clean
 from .config import AppConfig
 from .security import build_fernet
 from .sessions import SessionStore
+from . import startup
 from .telegram_io import telegram_retry_after
 
 
@@ -164,13 +165,10 @@ def run(
     if config is None:
         config = AppConfig.from_env()
     ctx = configure_runtime(config)
-    legacy_handlers = _load_legacy_handlers()
-    # Startup helpers still live in the temporary legacy bridge until their
-    # small runtime owners are extracted.
     if initialize_database is None:
-        initialize_database = lambda: legacy_handlers.initialize_database(ctx)
+        initialize_database = lambda: startup.initialize_database(ctx)
     if recover_user_sessions is None:
-        recover_user_sessions = lambda: legacy_handlers.recover_user_sessions(ctx)
+        recover_user_sessions = lambda: startup.recover_user_sessions(ctx)
 
     startup_message = f"Bot starting with username: {ctx.bot_username}"
     print(startup_message)

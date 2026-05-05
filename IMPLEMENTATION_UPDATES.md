@@ -74,7 +74,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Reducing the remaining `_legacy.py` helper bridge further once runtime startup helpers and text-message custom-input handling have dedicated modules.
-- Continuing to shrink `_legacy.py` by moving startup helpers, nickname database helpers, callback builders, and the text-message fallback router into their final modules.
+- Reducing the remaining `_legacy.py` helper bridge further once text-message custom-input handling has a dedicated module.
+- Continuing to shrink `_legacy.py` by moving nickname database helpers, callback builders, and the text-message fallback router into their final modules.
 - Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.
