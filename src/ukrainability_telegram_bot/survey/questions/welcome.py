@@ -27,6 +27,14 @@ class WelcomeCallbacks:
 
 @register("welcome")
 class WelcomeQuestion:
+    """Discovery entry for welcome flow until registration is centralized.
+
+    Welcome is a special case during Phase 5 because it has multiple entry
+    points: the `/start` message handler, the `restart` callback, and
+    programmatic restarts after saving. `_legacy.py` routes those entry points
+    explicitly while this class keeps the question visible in the registry.
+    """
+
     name = "welcome"
     callback_prefix = "restart"
 

@@ -253,7 +253,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'select_language': "Будь ласка, оберіть мову:",
         'language_buttons': ["English", "Українська"],
         'language_selected': "Мову встановлено на українську.",
-        'language_callback_ack': "Language set to {language}.",
+        'language_callback_ack': "Мову встановлено на {language}.",
         'project_intro': f'''Підтвердження участі
 Участь є добровільною. Ви можете припинити в будь-який час, але вже зібрана інформація може використовуватись, як описано в <a href="{PRIVACY_NOTICE_URL_UK}">політиці конфіденційності</a> та <a href="{PARTICIPANT_INFORMATION_SHEET_URL_UK}">інформаційному листі учасника</a>. Не беріть участь, якщо ви на 1) тимчасово окупованих або 2) прифронтових територіях. Не надсилайте інформацію, пов'язану з воєнною активністю. Тільки для осіб від 18 років.
 
@@ -268,8 +268,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'consent_acknowledgement': "Дякуємо за вашу згоду на участь!",
         'consent_thanks': "Дякуємо за ваш час.",
         'restart_button': "Перезапустити",
-        'restart_acknowledgement': "Restarting the survey.",
-        'restart_error': "An error occurred while restarting. Please try again later.",
+        'restart_acknowledgement': "Перезапуск опитування.",
+        'restart_error': "Виникла помилка під час перезапуску. Будь ласка, спробуйте пізніше.",
         'continue_button': "Продовжити",
         'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
