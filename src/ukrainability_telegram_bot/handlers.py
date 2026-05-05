@@ -9,56 +9,22 @@ from .survey import text_router
 from .survey.actions import SurveyActions
 from .survey.questions import (
     accessibility as accessibility_question,
-)
-from .survey.questions import (
     changes_detail as changes_detail_question,
-)
-from .survey.questions import (
     confirmation as confirmation_question,
-)
-from .survey.questions import (
     consent as consent_question,
-)
-from .survey.questions import (
     demographics as demographics_question,
-)
-from .survey.questions import (
     description as description_question,
-)
-from .survey.questions import (
     duration as duration_question,
-)
-from .survey.questions import (
     enjoyment as enjoyment_question,
-)
-from .survey.questions import (
     frequency as frequency_question,
-)
-from .survey.questions import (
     kremenchuk as kremenchuk_question,
-)
-from .survey.questions import (
     language as language_question,
-)
-from .survey.questions import (
     noticed_changes as noticed_changes_question,
-)
-from .survey.questions import (
     purpose as purpose_question,
-)
-from .survey.questions import (
     regularity as regularity_question,
-)
-from .survey.questions import (
     restart as restart_question,
-)
-from .survey.questions import (
     visitor_type as visitor_type_question,
-)
-from .survey.questions import (
     welcome as welcome_question,
-)
-from .survey.questions import (
     wishlist as wishlist_question,
 )
 from .telegram_io import clear_callback_state

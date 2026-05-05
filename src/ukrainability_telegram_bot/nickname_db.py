@@ -8,9 +8,11 @@ import random
 from . import nicknames
 from .app import AppContext
 from .pseudonym import hash_user_id
-from .storage import get_all_used_nicknames as fetch_all_used_nicknames
-from .storage import get_latest_user_nickname as fetch_latest_user_nickname
-from .storage import save_user_nickname as persist_user_nickname
+from .storage import (
+    get_all_used_nicknames as fetch_all_used_nicknames,
+    get_latest_user_nickname as fetch_latest_user_nickname,
+    save_user_nickname as persist_user_nickname,
+)
 
 
 def get_user_hash(ctx: AppContext, user_id: int) -> str:

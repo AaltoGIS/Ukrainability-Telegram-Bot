@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from .app import AppContext
 from .pseudonym import hash_user_id
-from .storage import get_latest_user_nickname
-from .storage import initialize_database as initialize_storage_database
+from .storage import get_latest_user_nickname, initialize_database as initialize_storage_database
 
 
 def initialize_database(ctx: AppContext) -> None:

@@ -63,4 +63,7 @@ ignore = ["E501"]
 "tests/conftest.py" = ["E402"]
 "tests/test_security.py" = ["E402"]
 
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
 [tool.ruff.format]
