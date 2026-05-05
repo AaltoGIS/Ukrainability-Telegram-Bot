@@ -9,13 +9,6 @@ from ukrainability_telegram_bot.app import AppContext
 from ukrainability_telegram_bot.config import AppConfig
 
 
-@pytest.fixture(autouse=True)
-def reset_runtime(monkeypatch):
-    monkeypatch.setattr(runtime, "bot", None)
-    monkeypatch.setattr(runtime, "bot_username", None)
-    yield
-
-
 def make_config(tmp_path):
     return AppConfig(
         telegram_bot_token="token",
@@ -49,12 +42,10 @@ def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tm
     ctx = runtime.configure_runtime(config)
 
     assert isinstance(ctx, AppContext)
-    assert runtime.bot is real_bot
     assert ctx.bot is real_bot
     assert ctx.config is config
     assert ctx.flow_logger is runtime.flow_logger
     assert ctx.bot_username == "testbot"
-    assert runtime.bot_username == "testbot"
     registered_names = {handler.__name__ for _args, _kwargs, handler in registered_handlers}
     assert "send_welcome" in registered_names
     assert "handle_text_messages" in registered_names
@@ -63,6 +54,24 @@ def test_configure_runtime_builds_context_and_registers_handlers(monkeypatch, tm
 def test_runtime_no_longer_exposes_active_context():
     assert not hasattr(runtime, "_active_context")
     assert not hasattr(runtime, "require_active_context")
+
+
+def test_runtime_no_longer_exposes_scalar_mirrors():
+    removed_names = {
+        "token",
+        "local_storage_dir",
+        "voice_files_dir",
+        "user_hash_salt",
+        "voice_retention_days",
+        "cleanup_interval_seconds",
+        "db_file",
+        "fernet",
+        "bot",
+        "bot_username",
+    }
+
+    for name in removed_names:
+        assert not hasattr(runtime, name)
 
 
 def test_run_configures_context_before_startup_tasks(monkeypatch, tmp_path, app_context):
@@ -79,7 +88,8 @@ def test_run_configures_context_before_startup_tasks(monkeypatch, tmp_path, app_
     def start_cleanup_scheduler(ctx):
         calls.append(("start_cleanup", ctx))
 
-    def stop_polling():
+    def stop_polling(ctx):
+        calls.append(("polling", ctx))
         raise KeyboardInterrupt
 
     monkeypatch.setattr(runtime, "configure_runtime", configure_runtime)
@@ -101,6 +111,7 @@ def test_run_configures_context_before_startup_tasks(monkeypatch, tmp_path, app_
         ("cleanup_voice", app_context),
     ]
     assert calls[4] == ("start_cleanup", app_context)
+    assert calls[5] == ("polling", app_context)
 
 
 def test_run_exits_when_database_initialization_fails(monkeypatch, tmp_path, app_context):
