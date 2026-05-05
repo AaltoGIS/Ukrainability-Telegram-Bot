@@ -211,22 +211,14 @@ def save_data_and_restart(
             safe_send_message(
                 ctx,
                 chat_id,
-                (
-                    "A security error occurred. Your data could not be saved securely. Please contact support."
-                    if language == "en"
-                    else "Сталася помилка безпеки. Ваші дані не могли бути збережені надійно. Зверніться до служби підтримки."
-                ),
+                messages[language]["security_error"],
             )
             return False
         except DatabaseSaveError:
             safe_send_message(
                 ctx,
                 chat_id,
-                (
-                    "A database error occurred. Your data could not be saved. Please try again later."
-                    if language == "en"
-                    else "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше."
-                ),
+                messages[language]["database_error"],
             )
             return False
 

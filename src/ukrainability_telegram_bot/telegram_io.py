@@ -227,15 +227,14 @@ def handle_callback_error(
             safe_send_message(ctx, chat_id, error_msg)
 
             inline_kb = types.InlineKeyboardMarkup()
-            restart_text = "Restart" if language == 'en' else "Перезапустити"
+            restart_text = messages[language]["restart_button"]
             restart_button = types.InlineKeyboardButton(text=restart_text, callback_data='restart')
             inline_kb.add(restart_button)
 
             safe_send_message(
                 ctx,
                 chat_id,
-                "You can restart the survey if needed:" if language == 'en' else
-                "Ви можете перезапустити опитування за потреби:",
+                messages[language]["callback_error_restart_prompt"],
                 reply_markup=inline_kb
             )
         except Exception as send_error:

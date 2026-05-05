@@ -32,6 +32,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'restart_acknowledgement': "Restarting the survey.",
         'restart_error': "An error occurred while restarting. Please try again later.",
         'continue_button': "Continue",
+        # Intentionally bilingual because this fallback is used before language is known.
         'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "This survey covers the area of the left bank waterfront of the Dnipro River"
@@ -142,8 +143,20 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'response_confirmed': "Response confirmed",
         'select_option_first': "Please select an option first",
         'voice_message_submitted': "Voice message submitted.",
+        'responses_summary_header': "Here's a summary of your responses. Please review them carefully:",
+        'responses_summary_question': "Is this information correct? You can modify any response or confirm submission.",
+        'latitude_label': "Latitude",
+        'longitude_label': "Longitude",
+        'skipped_label': "Skipped",
+        # Used when language is unknown; keep English-only to preserve legacy callback behavior.
+        'start_again': "Please start again with /start",
+        # Used when language is unknown; intentionally bilingual to preserve legacy callback behavior.
+        'session_expired': "Session expired. Please use /start to begin.\nСесія закінчилася. Будь ласка, використайте /start для початку.",
+        'security_error': "A security error occurred. Your data could not be saved securely. Please contact support.",
+        'database_error': "A database error occurred. Your data could not be saved. Please try again later.",
         'error_occurred': "An error occurred. Please try again later.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
+        'callback_error_restart_prompt': "You can restart the survey if needed:",
         'invalid_selection': "Invalid selection.",
         'your_response': "Your response:",
         'confirm_responses': "Please review your responses above. Do you confirm them or would like to modify anything?",
@@ -159,6 +172,13 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'description_retry_or_skip': "Would you like to try again or skip the description?",
         'selections_saved': "Selections saved",
         'please_select_at_least_one': "Please select at least one option.",
+        'multiple_select_input_noted': "✅ Your input has been noted. You can select more options, type more text, or press Done to continue.",
+        'multiple_select_prompt': "Please make a selection from the available options.",
+        'single_select_prompt': "Please select one of the options provided in the buttons below.",
+        'unsolicited_text_help': (
+            "I'm not sure what you want to do. Please follow the instructions shown on screen. "
+            "If you're stuck, use /start to restart the survey."
+        ),
         'visitor_type_custom_instruction': (
             "You can also type your own suggestion as a text message. When finished, press Done."
         ),
@@ -300,6 +320,7 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'restart_acknowledgement': "Перезапуск опитування.",
         'restart_error': "Виникла помилка під час перезапуску. Будь ласка, спробуйте пізніше.",
         'continue_button': "Продовжити",
+        # Intentionally bilingual because this fallback is used before language is known.
         'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "Дане опитування розглядає територію набережної лівого берега річки Дніпро в місті Кременчук "
@@ -408,8 +429,18 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'response_confirmed': "Відповідь підтверджено",
         'select_option_first': "Спочатку виберіть варіант",
         'voice_message_submitted': "Голосове повідомлення надіслано.",
+        'responses_summary_header': "Ось підсумок ваших відповідей. Будь ласка, уважно перегляньте їх:",
+        'responses_summary_question': "Чи правильна ця інформація? Ви можете змінити будь-яку відповідь або підтвердити подання.",
+        'latitude_label': "Широта",
+        'longitude_label': "Довгота",
+        'skipped_label': "Пропущено",
+        'start_again': "Будь ласка, почніть знову за допомогою /start",
+        'session_expired': "Сесія закінчилася. Будь ласка, використайте /start для початку.",
+        'security_error': "Сталася помилка безпеки. Ваші дані не могли бути збережені надійно. Зверніться до служби підтримки.",
+        'database_error': "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше.",
         'error_occurred': "Виникла помилка. Будь ласка, спробуйте пізніше.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
+        'callback_error_restart_prompt': "Ви можете перезапустити опитування за потреби:",
         'invalid_selection': "Недійсний вибір.",
         'your_response': "Ваша відповідь:",
         'confirm_responses': "Ви підтверджуєте відповіді, чи хотіли б щось змінити?",
@@ -419,6 +450,13 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'submission_confirmed': "Дякую! Відповіді було збережено",
         'done_button': "Готово",
         'please_select_at_least_one': "Будь ласка, оберіть принаймні один варіант.",
+        'multiple_select_input_noted': "✅ Вашу відповідь додано. Можете обрати більше варіантів, ввести ще текст або натиснути 'Готово' для продовження.",
+        'multiple_select_prompt': "Будь ласка, зробіть вибір із доступних варіантів.",
+        'single_select_prompt': "Будь ласка, оберіть один із варіантів, запропонованих у кнопках нижче.",
+        'unsolicited_text_help': (
+            "Я не впевнений, що ви хочете зробити. Будь ласка, слідуйте інструкціям, показаним на екрані. "
+            "Якщо ви застрягли, використовуйте /start для перезапуску опитування."
+        ),
         'please_send_text_or_voice': "Невірний формат. Будь ласка, надішліть текстове або голосове повідомлення.",
         'voice_processing_error': (
             "Вибачте, сталася помилка під час обробки голосового повідомлення. Будь ласка, спробуйте надіслати текстову відповідь."
