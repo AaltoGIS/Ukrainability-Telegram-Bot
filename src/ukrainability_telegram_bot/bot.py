@@ -25,6 +25,7 @@ from logging.handlers import RotatingFileHandler
 
 import telebot
 from telebot import types
+from telebot.apihelper import ApiTelegramException
 
 from . import cleanup as cleanup_module
 from .cleanup import (
@@ -39,6 +40,23 @@ from .messages import messages
 from .pseudonym import hash_user_id
 from .security import build_fernet
 from .storage import initialize_database as initialize_storage_database
+from . import telegram_io as telegram_io_module
+from .telegram_io import (
+    callback_index,
+    callback_suffix,
+    clear_message_ids,
+    edit_keyboard,
+    escape_html,
+    get_message_id,
+    handle_callback_error,
+    hide_keyboard,
+    redacted_coordinate,
+    safe_answer_callback,
+    safe_send_message,
+    send_keyboard_message,
+    send_next_step_prompt,
+    telegram_retry_after,
+)
 from .voice import new_voice_filename, safe_nickname_directory
 
 
@@ -140,6 +158,12 @@ def configure_runtime(config):
         bot = bot.bind(real_bot)
     else:
         bot = real_bot
+    telegram_io_module.bind(
+        bot=bot,
+        flow_logger=flow_logger,
+        safe_get_language=safe_get_language,
+        clear_callback_state=clear_callback_state,
+    )
 
     bot_info = bot.get_me()
     bot_username = bot_info.username
@@ -183,48 +207,6 @@ fernet = None  # Initialize global variable
 
 def get_user_hash(user_id):
     return hash_user_id(user_id, user_hash_salt)
-
-
-def telegram_retry_after(error, default=3):
-    def capped(value):
-        try:
-            return min(float(value), 60.0)
-        except (TypeError, ValueError):
-            return min(float(default), 60.0)
-
-    result_json = getattr(error, "result_json", None)
-    if isinstance(result_json, dict):
-        retry_after = result_json.get("parameters", {}).get("retry_after")
-        if retry_after is not None:
-            return capped(retry_after)
-    result = getattr(error, "result", None)
-    if isinstance(result, dict):
-        retry_after = result.get("parameters", {}).get("retry_after")
-        if retry_after is not None:
-            return capped(retry_after)
-    return capped(default)
-
-
-def redacted_coordinate(value):
-    try:
-        return round(float(value), 1)
-    except (TypeError, ValueError):
-        return "unknown"
-
-
-def callback_suffix(callback_data, prefix):
-    marker = f"{prefix}_"
-    if not callback_data.startswith(marker):
-        raise ValueError(f"Unexpected callback prefix for {prefix}")
-    return callback_data[len(marker):]
-
-
-def callback_index(callback_data, prefix, options):
-    suffix = callback_suffix(callback_data, prefix)
-    idx = int(suffix)
-    if idx < 0 or idx >= len(options):
-        raise IndexError(f"Callback index {idx} out of range for {prefix}")
-    return idx
 
 
 # Random nickname generation data
@@ -342,79 +324,6 @@ def get_user_nickname(user_hash):
         result = cursor.fetchone()
         return result[0] if result else None
 
-# Add to the global variables section
-# For tracking message IDs for each user
-message_id_registry = {}
-message_id_lock = threading.Lock()
-
-# Add these functions for message ID tracking
-def register_message_id(user_id, message_type, message_id):
-    """
-    Register a message ID for a specific user and message type.
-    """
-    with message_id_lock:
-        if user_id not in message_id_registry:
-            message_id_registry[user_id] = {}
-        message_id_registry[user_id][message_type] = message_id
-
-def get_message_id(user_id, message_type):
-    """
-    Get a previously registered message ID.
-    """
-    with message_id_lock:
-        return message_id_registry.get(user_id, {}).get(message_type)
-
-def clear_message_ids(user_id):
-    """
-    Clear all message IDs for a user.
-    """
-    with message_id_lock:
-        if user_id in message_id_registry:
-            message_id_registry.pop(user_id)
-
-# Enhanced keyboard send function that tracks the message ID
-def send_keyboard_message(chat_id, user_id, text, keyboard, message_type, parse_mode=None):
-    """
-    Send a message with a keyboard and register its ID for future updates.
-    """
-    try:
-        msg = safe_send_message(chat_id, text, reply_markup=keyboard, parse_mode=parse_mode)
-        register_message_id(user_id, message_type, msg.message_id)
-        return msg
-    except Exception as e:
-        flow_logger.error(f"Error sending keyboard message: {e}")
-        # Fall back to regular send without tracking
-        return safe_send_message(chat_id, text, reply_markup=keyboard, parse_mode=parse_mode)
-
-# Enhanced edit keyboard function that uses the tracked ID
-def edit_keyboard(user_id, chat_id, message_type, new_keyboard):
-    """
-    Update a previously sent keyboard using the tracked message ID.
-    """
-    message_id = get_message_id(user_id, message_type)
-    if not message_id:
-        flow_logger.warning(f"No message ID found for {message_type}, cannot edit keyboard")
-        return False
-    
-    try:
-        bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=message_id,
-            reply_markup=new_keyboard
-        )
-        return True
-    except ApiTelegramException as e:
-        if "message is not modified" in str(e):
-            # This is normal, not an error
-            return True
-        else:
-            flow_logger.error(f"Failed to edit keyboard: {e}")
-            return False
-    except Exception as e:
-        flow_logger.error(f"Error editing keyboard: {e}")
-        return False
-
-
 # Add these helper functions
 # Add these helper functions with better error handling
 def get_user_data(user_id, key=None, default=None):
@@ -483,61 +392,6 @@ def set_user_profile(user_id, key, value):
         return False
 
 
-# Add to the top of your file
-from telebot.apihelper import ApiTelegramException
-
-# Replace the existing send_message functions with this enhanced version
-def safe_send_message(chat_id, text, reply_markup=None, parse_mode=None, max_retries=3):
-    """
-    Safely send a message with retry logic for rate limits and connection issues.
-    """
-    for attempt in range(max_retries):
-        try:
-            return bot.send_message(
-                chat_id, 
-                text, 
-                reply_markup=reply_markup, 
-                parse_mode=parse_mode
-            )
-        except ApiTelegramException as e:
-            # Handle rate limiting
-            if getattr(e, "error_code", None) == 429:
-                retry_after = telegram_retry_after(e, default=3)
-                flow_logger.warning(f"Rate limited, waiting {retry_after}s before retry {attempt+1}/{max_retries}")
-                time.sleep(retry_after)
-                continue
-            elif attempt < max_retries - 1:
-                # For other API errors, retry with backoff
-                flow_logger.warning(f"API error: {e}, retrying in {2**attempt}s")
-                time.sleep(2**attempt)
-                continue
-            else:
-                # Last attempt failed, log and raise
-                flow_logger.error(f"Failed to send message after {max_retries} attempts: {e}")
-                raise
-        except Exception as e:
-            # Non-Telegram exceptions are not rate limits; retry once quickly.
-            if attempt == 0:
-                flow_logger.warning(f"Error sending message: {e}, retrying once")
-                time.sleep(1)
-                continue
-            else:
-                flow_logger.error(f"Failed to send message: {e}")
-                raise
-    raise RuntimeError("Failed to send message after retry loop")
-
-
-def send_next_step_prompt(chat_id, text, handler, reply_markup=None, parse_mode=None):
-    """Register the next-step handler before sending the prompt."""
-    bot.register_next_step_handler_by_chat_id(chat_id, handler)
-    return safe_send_message(
-        chat_id,
-        text,
-        reply_markup=reply_markup,
-        parse_mode=parse_mode,
-    )
-
-
 def save_user_nickname(user_hash, nickname):
     month_year = datetime.datetime.now().strftime('%Y-%m')
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
@@ -547,11 +401,6 @@ def save_user_nickname(user_hash, nickname):
             VALUES (?, ?, ?)
         ''', (user_hash, nickname, month_year))
 
-
-def escape_html(text):
-    if not isinstance(text, str):
-        text = str(text)
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 # Add this function to the top of your script to help with error handling
 
@@ -582,81 +431,22 @@ def safe_get_language(user_id):
         return 'en'
 
 
-def handle_callback_error(call, e, func_name):
-    """
-    Enhanced error handler for callback functions with proper state clearing.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
+def clear_callback_state(user_id):
+    """Clear transient callback state for a user after a handler error."""
 
-        # Log the error with full details
-        logging.exception(f"Error in {func_name}: {e}")
+    with user_data_lock:
+        if user_id in user_data:
+            keys_to_remove = []
+            for key in user_data[user_id]:
+                if (key.startswith('temp_') or
+                    key == 'awaiting_multiple_select' or
+                    key == 'current_question' or
+                    key == 'modifying' or
+                    key == 'modifying_field'):
+                    keys_to_remove.append(key)
 
-        # Get language safely
-        language = safe_get_language(user_id)
-        error_msg = messages[language].get(
-            'error_occurred', "An error occurred. Please try again later.")
-
-        # Attempt to clear user's state in a thread-safe way
-        with user_data_lock:
-            if user_id in user_data:
-                # Clear all temporary state variables
-                keys_to_remove = []
-                for k in user_data[user_id]:
-                    if (k.startswith('temp_') or 
-                        k == 'awaiting_multiple_select' or 
-                        k == 'current_question' or 
-                        k == 'modifying' or 
-                        k == 'modifying_field'):
-                        keys_to_remove.append(k)
-                
-                for k in keys_to_remove:
-                    user_data[user_id].pop(k, None)
-
-        # Use safe send to inform the user
-        try:
-            bot.answer_callback_query(call.id, "Error occurred / Виникла помилка")
-            safe_send_message(chat_id, error_msg)
-            
-            # Provide a way for the user to recover
-            inline_kb = types.InlineKeyboardMarkup()
-            restart_text = "Restart" if language == 'en' else "Перезапустити"
-            restart_button = types.InlineKeyboardButton(text=restart_text, callback_data='restart')
-            inline_kb.add(restart_button)
-            
-            safe_send_message(
-                chat_id,
-                "You can restart the survey if needed:" if language == 'en' else 
-                "Ви можете перезапустити опитування за потреби:",
-                reply_markup=inline_kb
-            )
-        except Exception as send_error:
-            logging.critical(f"Failed to send error message to user: {send_error}")
-    except Exception as recovery_error:
-        # Last resort logging if the error handler itself fails
-        logging.critical(f"Error handler failed: {recovery_error}")
-
-
-def safe_answer_callback(call, message):
-    """Safely answer a callback query, ignoring expired queries"""
-    try:
-        bot.answer_callback_query(call.id, message)
-    except telebot.apihelper.ApiTelegramException as e:
-        if "query is too old" in str(e) or "query ID is invalid" in str(e):
-            # Quietly ignore expired callback queries
-            flow_logger.info(f"Ignoring expired callback query: {e}")
-        else:
-            # Re-raise other API exceptions
-            flow_logger.error(f"API exception in safe_answer_callback: {e}")
-            # Try to send a message to inform user something went wrong
-            try:
-                user_id = call.from_user.id
-                language = safe_get_language(user_id)
-                bot.send_message(call.message.chat.id, messages[language].get(
-                    'error_occurred', "An error occurred. Please try again."))
-            except Exception:
-                pass
+            for key in keys_to_remove:
+                user_data[user_id].pop(key, None)
 
 
 def ensure_session_valid(call):
@@ -834,28 +624,6 @@ def initialize_database():
     except Exception as e:
         logging.exception(f"Error initializing responses database: {e}")
         raise e
-
-def hide_keyboard(chat_id):
-    """
-    Helper function to hide the keyboard in the chat.
-    Uses a completely invisible character (zero-width space) to hide the keyboard.
-
-    Args:
-        chat_id (int): Telegram chat ID where keyboard should be hidden
-    """
-    try:
-        remove_keyboard = types.ReplyKeyboardRemove()
-        # Use zero-width space (U+200B) - completely invisible character
-        bot.send_message(
-            chat_id,
-            "\u200B",  # Zero-width space character
-            reply_markup=remove_keyboard
-        )
-    except Exception as e:
-        # Just log, don't interrupt flow if this fails
-        logging.warning(f"Failed to hide keyboard: {e}")
-
-
 
 # Start and restart handlers
 @bot.callback_query_handler(func=lambda call: call.data == 'restart')

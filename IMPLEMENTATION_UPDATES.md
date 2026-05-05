@@ -18,7 +18,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 | Side effects at import time: created storage directories, opened the DB, called `bot.get_me()`, spawned the cleanup thread. | All side effects deferred to `configure_runtime(AppConfig)` / `run()`. Importing the package does nothing observable. |
 | Handlers registered at import via `@bot.message_handler(...)` against a real `TeleBot`. | `HandlerRegistry` records decorators at import; `configure_runtime` replays them against the real `TeleBot` once it's built. |
 | Hard-coded `/home/ubuntu/kremenchuk` paths and inline credentials parsing. | `AppConfig.from_env()` dataclass with explicit fields; `UKRAINABILITY_STORAGE_DIR`, `UKRAINABILITY_CREDENTIALS_FILE`, `UKRAINABILITY_BOT_ERRORS_LOG`, `UKRAINABILITY_FLOW_CONTROL_LOG`, `UKRAINABILITY_LOG_MAX_BYTES`, `UKRAINABILITY_LOG_BACKUP_COUNT`, `UKRAINABILITY_VOICE_RETENTION_DAYS`, `UKRAINABILITY_CLEANUP_INTERVAL_SECONDS`. |
-| No tests. | Unit tests covering config, security, storage, pseudonym, voice helpers, nicknames, keyboards, messages, cleanup, and helper functions. |
+| No tests. | Unit tests covering config, security, storage, pseudonym, voice helpers, nicknames, keyboards, messages, cleanup, Telegram I/O, and helper functions. |
 
 ## Security
 
@@ -59,7 +59,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by `bot.py`. |
 
 ## What is intentionally unchanged
@@ -72,7 +72,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Splitting the remaining `bot.py` responsibilities into `runtime.py`, `telegram_io.py`, `survey/persistence.py`, and per-question modules under `survey/questions/` — see `REVIEW_FIXES.md` and the v4 refactor plan.
+- Splitting the remaining `bot.py` responsibilities into `runtime.py`, `survey/persistence.py`, and per-question modules under `survey/questions/` — see `REVIEW_FIXES.md` and the v4 refactor plan.
 - Survey-flow integration tests (drive a callback chain through a mocked `TeleBot`).
 - Path-level voice tests (directory creation, filename generation, encrypted-file write/read on disk).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.

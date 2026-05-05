@@ -134,6 +134,7 @@ src/ukrainability_telegram_bot/
   config.py     # environment and legacy credentials loading
   security.py   # Fernet helpers
   storage.py    # SQLite helpers
+  telegram_io.py # Telegram send/edit/callback helpers
   keyboards.py  # keyboard construction helper
 tests/          # pytest suite
 ```
