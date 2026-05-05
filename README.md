@@ -24,7 +24,7 @@ studies in other cities and on other messenger platforms.
 Use Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/HTenkanen/UkrainabilityTelegramBot.git
+git clone https://github.com/AaltoGIS/Ukrainability-Telegram-Bot.git
 cd UkrainabilityTelegramBot
 python3 -m pip install .
 cp .env.example .env
