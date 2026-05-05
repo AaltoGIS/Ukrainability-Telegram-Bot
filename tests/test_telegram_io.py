@@ -10,6 +10,18 @@ from ukrainability_telegram_bot import telegram_io
 def test_telegram_io_raises_when_unbound(monkeypatch):
     monkeypatch.setattr(telegram_io, "_bot", None)
     monkeypatch.setattr(telegram_io, "_flow_logger", None)
+    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
+    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
+
+    with pytest.raises(RuntimeError, match="telegram_io.bind"):
+        telegram_io.safe_send_message(123, "hello")
+
+
+def test_telegram_io_raises_when_error_helpers_are_unbound(monkeypatch):
+    monkeypatch.setattr(telegram_io, "_bot", MagicMock())
+    monkeypatch.setattr(telegram_io, "_flow_logger", logging.getLogger("test.telegram_io"))
+    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
+    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
 
     with pytest.raises(RuntimeError, match="telegram_io.bind"):
         telegram_io.safe_send_message(123, "hello")
@@ -18,10 +30,17 @@ def test_telegram_io_raises_when_unbound(monkeypatch):
 def test_telegram_io_bind_allows_safe_send_message(monkeypatch):
     monkeypatch.setattr(telegram_io, "_bot", None)
     monkeypatch.setattr(telegram_io, "_flow_logger", None)
+    monkeypatch.setattr(telegram_io, "_safe_get_language", None)
+    monkeypatch.setattr(telegram_io, "_clear_callback_state", None)
     mock_bot = MagicMock()
     mock_bot.send_message.return_value = SimpleNamespace(message_id=42)
 
-    telegram_io.bind(bot=mock_bot, flow_logger=logging.getLogger("test.telegram_io"))
+    telegram_io.bind(
+        bot=mock_bot,
+        flow_logger=logging.getLogger("test.telegram_io"),
+        safe_get_language=lambda user_id: "en",
+        clear_callback_state=lambda user_id: None,
+    )
 
     msg = telegram_io.safe_send_message(123, "hello")
 

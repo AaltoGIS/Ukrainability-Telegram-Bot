@@ -33,8 +33,8 @@ def bind(
     *,
     bot: Any,
     flow_logger: logging.Logger,
-    safe_get_language: Callable[[int], str] | None = None,
-    clear_callback_state: Callable[[int], None] | None = None,
+    safe_get_language: Callable[[int], str],
+    clear_callback_state: Callable[[int], None],
 ) -> None:
     """Bind temporary legacy dependencies until AppContext replaces them."""
 
@@ -50,7 +50,12 @@ def bind(
 
 
 def _require_bound() -> tuple[Any, logging.Logger]:
-    if _bot is None or _flow_logger is None:
+    if (
+        _bot is None
+        or _flow_logger is None
+        or _safe_get_language is None
+        or _clear_callback_state is None
+    ):
         raise RuntimeError("telegram_io.bind() must be called before use")
     return _bot, _flow_logger
 
@@ -241,8 +246,8 @@ def escape_html(text: Any) -> str:
 
 
 def _language_for(user_id: int) -> str:
-    if _safe_get_language is None:
-        return "en"
+    _require_bound()
+    assert _safe_get_language is not None
     return _safe_get_language(user_id)
 
 
@@ -263,8 +268,8 @@ def handle_callback_error(call: Any, e: Exception, func_name: str) -> None:
             'error_occurred', "An error occurred. Please try again later.")
 
         # Attempt to clear user's state in a thread-safe way
-        if _clear_callback_state is not None:
-            _clear_callback_state(user_id)
+        assert _clear_callback_state is not None
+        _clear_callback_state(user_id)
 
         # Use safe send to inform the user
         try:
