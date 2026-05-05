@@ -28,6 +28,19 @@ def test_callback_index_validates_prefix_and_bounds():
         bot.callback_index("consent_2", "consent", options)
 
 
+def test_legacy_bridge_does_not_expose_session_store_wrappers(app_context):
+    bridge = bot.create_legacy_bridge(app_context)
+
+    for name in (
+        "get_user_data",
+        "set_user_data",
+        "remove_user_data",
+        "get_user_profile",
+        "set_user_profile",
+    ):
+        assert not hasattr(bridge, name)
+
+
 def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path, app_context):
     user_id = 123
     bridge = bot.create_legacy_bridge(app_context)
