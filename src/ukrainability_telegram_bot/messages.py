@@ -24,7 +24,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Be sure to remember this ID – it will unlock additional benefits for you after completing the survey."
         ),
         'consent_denied': "Thank you for your time. If you change your mind, you can restart the bot.",
+        'consent_acknowledgement': "Thank you for agreeing to participate!",
+        'consent_thanks': "Thank you for your time.",
         'restart_button': "Restart",
+        'continue_button': "Continue",
+        'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "This survey covers the area of the left bank waterfront of the Dnipro River"
             " in the city of Kremenchuk and its surroundings. It may also include Student Park,"
@@ -77,6 +81,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         ],
         'invalid_rating': "Invalid input. Please select an option requested in the question.",
         'purpose_visit': "What outdoor activities were your main reasons for visiting this place?",
+        'purpose_visit_custom_instruction': (
+            "You can also type your own activity as a text message. When finished, press Done."
+        ),
         'other_purpose': "Please specify your other purpose of visit. ",
         'other_visitor_type': "Please specify who else would appreciate this place:",
         'other_accessibility': "Please specify another way you traveled to this place:",
@@ -91,6 +98,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'add_description': (
             "We'd love to hear more about your experience. Please share any stories, feelings, or memorable moments from your visit. "
             "You can type your response or send a voice message. The voice message will be transcribed to text for analysis, and the original message will be deleted immediately afterward to protect your privacy. If you'd prefer to skip and finish, please press 'Skip'."
+        ),
+        'voice_instruction': (
+            "To send a voice message, touch and hold the microphone icon in the message bar, speak, and then release."
         ),
         'thank_you': "Thank you! Your data has been received.",
         'thank_you_lottery': "Thank you! Your data has been received. Good luck in the lottery!",
@@ -132,6 +142,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'submission_confirmed': "Thank you! Your responses have been submitted.",
         'done_button': "Done",
         'please_send_text_or_voice': "Invalid input. Please send a text message or a voice message.",
+        'voice_processing_error': (
+            "Sorry, there was an error processing your voice message. Please try sending a text response instead."
+        ),
+        'description_retry_or_skip': "Would you like to try again or skip the description?",
+        'selections_saved': "Selections saved",
         'please_select_at_least_one': "Please select at least one option.",
         'labels': {
             'location': 'Location',
@@ -243,7 +258,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Будь-ласка, запам'ятайте цей ID – він відкриє вам додаткові переваги після завершення опитування"
         ),
         'consent_denied': "Дякуємо за ваш час. Якщо ви передумаєте, ви можете перезапустити бота.",
+        'consent_acknowledgement': "Дякуємо за вашу згоду на участь!",
+        'consent_thanks': "Дякуємо за ваш час.",
         'restart_button': "Перезапустити",
+        'continue_button': "Продовжити",
+        'please_use_start': "Please use /start to begin.\nБудь ласка, використайте /start для початку.",
         'send_location': (
             "Дане опитування розглядає територію набережної лівого берега річки Дніпро в місті Кременчук "
             "та на його околицях. Також можуть бути позначені Студентський парк, Придніпровський парк, "
@@ -301,6 +320,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         ],
         'invalid_rating': "Недійсний вибір. Будь ласка, оберіть варіант, запропонований у запитанні.",
         'purpose_visit': "Чим ви займалися в цьому місці? Оберіть усі варіанти, які найкраще підходять, та/або додайте свій, якщо його немає у списку.",
+        'purpose_visit_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
         'regularity_question': "Ви відвідуєте це місце регулярно, час від часу, чи лише один раз?",
         'changes_question': "Чи помітили ви якісь зміни в цьому місці після повномасштабного вторгнення?",
         'changes_detail_question': "Що саме змінилося? Ви можете обрати декілька варіантів.",
@@ -309,6 +331,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'add_description': (
             "Ми були б раді почути більше про ваш досвід. Будь ласка, поділіться будь-якими історіями, почуттями або пам'ятними моментами від вашого візиту. "
             "Ви можете написати відповідь або надіслати голосове повідомлення. Голосове повідомлення буде перетворено в текст для аналізу, а оригінальне голосове повідомлення буде негайно видалене для захисту вашої конфіденційності. Якщо ви хочете пропустити та завершити, будь ласка, натисніть 'Пропустити'."
+        ),
+        'voice_instruction': (
+            "Щоб надіслати голосове повідомлення, натисніть і утримуйте іконку мікрофона в рядку повідомлень, говоріть і потім відпустіть."
         ),
         'thank_you': "Дякуємо! Ваші дані були отримані.",
         'skip_button': "Пропустити",
@@ -350,6 +375,11 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'done_button': "Готово",
         'please_select_at_least_one': "Будь ласка, оберіть принаймні один варіант.",
         'please_send_text_or_voice': "Невірний формат. Будь ласка, надішліть текстове або голосове повідомлення.",
+        'voice_processing_error': (
+            "Вибачте, сталася помилка під час обробки голосового повідомлення. Будь ласка, спробуйте надіслати текстову відповідь."
+        ),
+        'description_retry_or_skip': "Хочете спробувати знову чи пропустити опис?",
+        'selections_saved': "Вибір збережено",
         'labels': {
             'location': 'Локація',
             'enjoyment': 'Якість часу',

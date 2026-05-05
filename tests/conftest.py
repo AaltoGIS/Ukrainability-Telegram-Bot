@@ -16,12 +16,28 @@ from ukrainability_telegram_bot.app import AppContext
 from ukrainability_telegram_bot.cleanup import cleanup_stop_event
 from ukrainability_telegram_bot.config import AppConfig
 from ukrainability_telegram_bot.sessions import SessionStore
+from ukrainability_telegram_bot.storage import initialize_database
+
+
+def make_mocked_telebot():
+    bot = MagicMock()
+    bot.message_handler = MagicMock(side_effect=lambda *args, **kwargs: lambda func: func)
+    bot.callback_query_handler = MagicMock(
+        side_effect=lambda *args, **kwargs: lambda func: func
+    )
+    bot.get_me.return_value = SimpleNamespace(username="testbot")
+    return bot
+
+
+@pytest.fixture
+def mocked_telebot():
+    return make_mocked_telebot()
 
 
 @pytest.fixture
 def app_context(tmp_path):
-    bot = MagicMock()
-    bot.get_me.return_value = SimpleNamespace(username="testbot")
+    bot = make_mocked_telebot()
+    initialize_database(tmp_path / "responses_kremenchuk.db")
     config = AppConfig(
         telegram_bot_token="token",
         encryption_key=Fernet.generate_key().decode("ascii"),

@@ -60,7 +60,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, and `survey/persistence.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, `survey/persistence.py`, and pilot `survey/questions/` modules for consent, purpose, and description. `bot.py` keeps thin compatibility wrappers for those pilot handlers until Phase 5 removes import-time registration. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by `bot.py`. |
 
 ## What is intentionally unchanged
@@ -73,7 +73,6 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Splitting the remaining `bot.py` responsibilities into per-question modules under `survey/questions/` — see `REVIEW_FIXES.md` and the v4 refactor plan.
-- Survey-flow integration tests (drive a callback chain through a mocked `TeleBot`).
-- Path-level voice tests (directory creation, filename generation, encrypted-file write/read on disk).
+- Splitting the remaining `bot.py` responsibilities into per-question modules under `survey/questions/` — Phase 4 piloted consent, purpose, and description; Phase 5 will migrate the rest and remove `HandlerRegistry`.
+- Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.
