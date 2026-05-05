@@ -28,14 +28,24 @@ from .survey.persistence import (
 )
 from .survey.questions import consent as consent_question
 from .survey.questions import description as description_question
+from .survey.questions import accessibility as accessibility_question
+from .survey.questions import duration as duration_question
+from .survey.questions import enjoyment as enjoyment_question
 from .survey.questions import language as language_question
 from .survey.questions import location as location_question
 from .survey.questions import purpose as purpose_question
+from .survey.questions import regularity as regularity_question
+from .survey.questions import visitor_type as visitor_type_question
 from .survey.questions import welcome as welcome_question
 from .survey.questions.base import (
+    AccessibilityCallbacks,
     ConsentCallbacks,
     DescriptionCallbacks,
+    DurationCallbacks,
+    EnjoymentCallbacks,
     PurposeCallbacks,
+    RegularityCallbacks,
+    VisitorTypeCallbacks,
 )
 from . import telegram_io as telegram_io_module
 from .telegram_io import (
@@ -649,855 +659,129 @@ def update_purpose_selection_keyboard(message, user_id, language):
 
 # Enjoyment and visitor type handlers
 def ask_enjoyment(chat_id, user_id, language, remove_keyboard=False):
-    try:
-        # Combine predefined and custom purposes
-        predefined_purposes = _user_data()[user_id].get('purpose_visit', [])
-        custom_purposes = _user_data()[user_id].get('custom_purposes', [])
-        all_purposes = predefined_purposes + custom_purposes
-
-        if all_purposes:
-            joined_purposes = ', '.join(all_purposes)
-            if language == 'en':
-                enjoyment_text = f"How did you find your time spent at this place while engaging in: {joined_purposes}?"
-            else:
-                enjoyment_text = f"Як вам сподобався ваш час, проведений у цьому місці, займаючись: {joined_purposes}?"
-        else:
-            # If no purposes were selected or typed for some reason, fallback:
-            enjoyment_text = messages[language]['enjoyment_question']
-
-        # Set current_question to track that we are at the enjoyment step
-        _user_data()[user_id]['current_question'] = 'enjoyment'
-
-        options = messages[language]['enjoyment_options']
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = []
-        for idx, option in enumerate(options):
-            button = types.InlineKeyboardButton(
-                text=option, callback_data=f"enjoyment_{idx}")
-            buttons.append(button)
-        inline_kb.add(*buttons)
-
-        bot.send_message(
-            chat_id,
-            enjoyment_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_enjoyment: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    enjoyment_question.ask_enjoyment(
+        _ctx(), chat_id, user_id, language, remove_keyboard=remove_keyboard
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('enjoyment_'))
 def handle_enjoyment_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                _user_data()[user_id]['language'] = _user_profiles()[user_id]['language']
-            else:
-                bot.send_message(
-                    chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-                return
-
-        language = _user_data()[user_id]['language']
-        options = messages[language]['enjoyment_options']
-        try:
-            idx = callback_index(call.data, "enjoyment", options)
-        except (ValueError, IndexError):
-            safe_answer_callback(call, messages[language]['invalid_rating'])
-            return
-
-        enjoyment = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_enjoyment'] = enjoyment
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"enjoyment_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_enjoyment"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as api_error:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(api_error):
-                logging.exception(
-                    f"Telegram API error in handle_enjoyment_selection: {api_error}")
-
-        # Replace direct call with safe_answer_callback
-        safe_answer_callback(
-            call, f"{messages[language]['selected']} {enjoyment}")
-    except Exception as e:
-        logging.exception(f"Error in handle_enjoyment_selection: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    enjoyment_question.handle_enjoyment_selection(
+        _ctx(),
+        call,
+        EnjoymentCallbacks(
+            ask_visitor_type=ask_visitor_type,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_enjoyment")
 def confirm_enjoyment(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_enjoyment' in _user_data()[user_id]:
-            _user_data()[user_id]['enjoyment'] = _user_data()[user_id]['temp_enjoyment']
-            _user_data()[user_id].pop('temp_enjoyment')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            enjoyment = _user_data()[user_id]['enjoyment']
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(enjoyment)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Continue with the next question
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying', None)
-                _user_data()[user_id].pop('modifying_field', None)
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                ask_visitor_type(chat_id, user_id, language)
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_enjoyment: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    enjoyment_question.confirm_enjoyment(
+        _ctx(),
+        call,
+        EnjoymentCallbacks(
+            ask_visitor_type=ask_visitor_type,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 # Visitor type handler modifications
 def ask_visitor_type(chat_id, user_id, language):
-    try:
-        # Clear old values if any
-        _user_data()[user_id]['visitor_type'] = []
-        _user_data()[user_id]['custom_visitor_types'] = []
-        _user_data()[user_id]['awaiting_multiple_select'] = 'visitor_type'
-
-        # Remove the 'Other' option
-        visitor_options = messages[language]['visitor_type_options'][:-1]
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = [
-            types.InlineKeyboardButton(
-                text=o,
-                callback_data=f"visitor_{i}") for i,
-            o in enumerate(visitor_options)]
-        # Add Done button by default for better UX with free text input
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="visitor_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['visitor_type_question']}\n\n"
-            f"{'You can also type your own suggestion as a text message. ' if language=='en' else 'Ви також можете ввести власний варіант у полі введення тексту. '}"
-            f"{'When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.'}")
-
-        bot.send_message(chat_id, instruction_text, reply_markup=inline_kb)
-    except Exception as e:
-        logging.exception(f"Error in ask_visitor_type: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    visitor_type_question.ask_visitor_type(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('visitor_'))
 def handle_visitor_type_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        data = callback_suffix(call.data, "visitor")
-
-        # Remove the 'Other' option
-        visitor_options = messages[language]['visitor_type_options'][:-1]
-
-        if data == 'done':
-            # User presses Done
-            # Check if user selected or typed anything
-            if not _user_data()[user_id]['visitor_type'] and not _user_data()[user_id].get(
-                    'custom_visitor_types', []):
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Combine selected options and custom inputs
-            all_visitor_types = _user_data()[user_id]['visitor_type'] + \
-                _user_data()[user_id].get('custom_visitor_types', [])
-
-            # Echo the user's selections
-            selected = '; '.join(all_visitor_types)
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected)}</i>",
-                parse_mode='HTML')
-
-            # Clear awaiting_multiple_select
-            _user_data()[user_id].pop('awaiting_multiple_select', None)
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if we're in modifying mode
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Proceed directly to ask_duration
-                ask_duration(chat_id, user_id, language)
-        else:
-            try:
-                idx = callback_index(call.data, "visitor", visitor_options)
-            except (ValueError, IndexError):
-                safe_answer_callback(
-                    call, messages[language]['invalid_selection'])
-                return
-
-            choice = visitor_options[idx]
-
-            # Toggle selection
-            if choice in _user_data()[user_id]['visitor_type']:
-                _user_data()[user_id]['visitor_type'].remove(choice)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['unselected']} {choice}")
-            else:
-                _user_data()[user_id]['visitor_type'].append(choice)
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, f"{messages[language]['selected']} {choice}")
-
-            update_visitor_type_keyboard(
-                call.message, user_id, language, visitor_options)
-    except Exception as e:
-        logging.exception(f"Error in handle_visitor_type_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    visitor_type_question.handle_visitor_type_selection(
+        _ctx(),
+        call,
+        VisitorTypeCallbacks(
+            ask_duration=ask_duration,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 def update_visitor_type_keyboard(message, user_id, language, options):
-    try:
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        selected_options = _user_data()[user_id]['visitor_type']
-        custom_visitor_types = _user_data()[user_id].get(
-            'custom_visitor_types', [])
-
-        buttons = []
-        for i, o in enumerate(options):
-            prefix = "✅ " if o in selected_options else ""
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=prefix + o,
-                    callback_data=f"visitor_{i}"))
-
-        # Only add the Done button if at least one selection has been made
-        if selected_options or custom_visitor_types:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="visitor_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=inline_kb)
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(
-                    f"Error in update_visitor_type_keyboard: {e}")
-    except Exception as e:
-        logging.exception(f"Error in update_visitor_type_keyboard: {e}")
+    visitor_type_question.update_visitor_type_keyboard(
+        _ctx(), message, user_id, language, options
+    )
 
 
 
 # Duration and accessibility handlers
 def ask_duration(chat_id, user_id, language):
-    try:
-        _user_data()[user_id]['duration_visit'] = ''
-        _user_data()[user_id]['current_question'] = 'duration'
-
-        duration_options = messages[language]['duration_options']
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        for i, option in enumerate(duration_options):
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=option,
-                    callback_data=f"duration_{i}"))
-
-        # Use the question text directly
-        question_text = messages[language]['duration_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_duration: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    duration_question.ask_duration(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('duration_'))
 def handle_duration_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        duration_options = messages[language]['duration_options']
-        try:
-            idx = callback_index(call.data, "duration", duration_options)
-        except (ValueError, IndexError):
-            safe_answer_callback(call, messages[language]['invalid_selection'])
-            return
-
-        selected_duration = duration_options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_duration_visit'] = selected_duration
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(duration_options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"duration_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_duration"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as api_error:
-            # Ignore "message is not modified" error as it's normal when
-            # selecting the same option
-            if "message is not modified" not in str(api_error):
-                raise api_error
-
-        # Replace direct call with safe_answer_callback
-        safe_answer_callback(
-            call, f"{messages[language]['selected']} {selected_duration}")
-    except Exception as e:
-        logging.exception(f"Error in handle_duration_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    duration_question.handle_duration_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_duration")
 def confirm_duration(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_duration_visit' in _user_data()[user_id]:
-            selected_duration = _user_data()[user_id]['temp_duration_visit']
-            _user_data()[user_id]['duration_visit'] = selected_duration
-            _user_data()[user_id].pop('temp_duration_visit')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_duration)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Check if we're in modifying mode
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Proceed to accessibility
-                ask_accessibility(chat_id, user_id, language)
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_duration: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    duration_question.confirm_duration(
+        _ctx(),
+        call,
+        DurationCallbacks(
+            ask_accessibility=ask_accessibility,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 # Accessibility handler modifications
 def ask_accessibility(chat_id, user_id, language):
-    try:
-        # Clear old values if any
-        _user_data()[user_id]['accessibility'] = []
-        _user_data()[user_id]['custom_accessibility'] = []
-        _user_data()[user_id]['awaiting_multiple_select'] = 'accessibility'
-
-        # Remove the 'Other' option
-        options = messages[language]['accessibility_options'][:-1]
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = [
-            types.InlineKeyboardButton(
-                text=option,
-                callback_data=f"accessibility_{idx}") for idx,
-            option in enumerate(options)]
-        # Add Done button by default for better UX with free text input
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="accessibility_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        instruction_text = (
-            f"{messages[language]['accessibility_question']}\n\n"
-            f"{('You can also type your own mode of travel as a text message. ' if language=='en' else 'Ви також можете ввести власний варіант у полі введення тексту. ')}"
-            f"{('When finished, press Done.' if language=='en' else 'Коли закінчите, натисніть Готово.')}")
-
-        bot.send_message(
-            chat_id,
-            instruction_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_accessibility: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    accessibility_question.ask_accessibility(_ctx(), chat_id, user_id, language)
 
 
-@bot.callback_query_handler(
-    func=lambda call: call.data.startswith('accessibility_'))
 @bot.callback_query_handler(
     func=lambda call: call.data.startswith('accessibility_'))
 def handle_accessibility_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        data = callback_suffix(call.data, "accessibility")
-        # Remove the 'Other' option
-        options = messages[language]['accessibility_options'][:-1]
-
-        if data == 'done':
-            if not _user_data()[user_id]['accessibility'] and not _user_data()[user_id].get(
-                    'custom_accessibility', []):
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call,
-                    messages[language].get(
-                        'please_select_at_least_one',
-                        "Please select at least one option or type your own."))
-                return
-
-            # Remove the inline keyboard
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Combine predefined and custom inputs
-            all_access = _user_data()[user_id]['accessibility'] + \
-                _user_data()[user_id].get('custom_accessibility', [])
-            selected = '; '.join(all_access)
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected)}</i>",
-                parse_mode='HTML')
-
-            # Clear awaiting_multiple_select
-            _user_data()[user_id].pop('awaiting_multiple_select', None)
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            if _user_data()[user_id].get('modifying'):
-                _user_data()[user_id].pop('modifying')
-                ask_final_confirmation(chat_id, user_id, language)
-            else:
-                ask_regularity(chat_id, user_id, language)
-        else:
-            # User selected/unselected an option
-            idx = int(data)
-            if 0 <= idx < len(options):
-                choice = options[idx]
-
-                # Toggle selection
-                if choice in _user_data()[user_id]['accessibility']:
-                    _user_data()[user_id]['accessibility'].remove(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['unselected']} {choice}")
-                else:
-                    _user_data()[user_id]['accessibility'].append(choice)
-                    # Replace direct call with safe_answer_callback
-                    safe_answer_callback(
-                        call, f"{messages[language]['selected']} {choice}")
-
-                update_accessibility_keyboard(
-                    call.message, user_id, language, options)
-            else:
-                # Replace direct call with safe_answer_callback
-                safe_answer_callback(
-                    call, messages[language]['invalid_selection'])
-    except Exception as e:
-        logging.exception(f"Error in handle_accessibility_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    accessibility_question.handle_accessibility_selection(
+        _ctx(),
+        call,
+        AccessibilityCallbacks(
+            ask_regularity=ask_regularity,
+            ask_final_confirmation=ask_final_confirmation,
+        ),
+    )
 
 
 def update_accessibility_keyboard(message, user_id, language, options):
-    # Show checkmarks for selected items
-    try:
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        selected_options = _user_data()[user_id]['accessibility']
-        custom_accessibility = _user_data()[user_id].get(
-            'custom_accessibility', [])
-
-        buttons = []
-        for idx, option in enumerate(options):
-            button_text = f"✅ {option}" if option in selected_options else option
-            callback_data = f"accessibility_{idx}"
-            buttons.append(
-                types.InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data))
-
-        # Only add the Done button if at least one selection has been made
-        if selected_options or custom_accessibility:
-            done_button = types.InlineKeyboardButton(
-                text=messages[language]['done_button'],
-                callback_data="accessibility_done")
-            inline_kb.add(*buttons)
-            inline_kb.add(done_button)
-        else:
-            inline_kb.add(*buttons)
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=inline_kb)
-        except telebot.apihelper.ApiTelegramException as e:
-            if "message is not modified" not in str(e):
-                logging.exception(
-                    f"Error in update_accessibility_keyboard: {e}")
-    except Exception as e:
-        logging.exception(f"Error in update_accessibility_keyboard: {e}")
-        bot.send_message(
-            message.chat.id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    accessibility_question.update_accessibility_keyboard(
+        _ctx(), message, user_id, language, options
+    )
 
 
 
 def ask_regularity(chat_id, user_id, language):
-    """
-    Asks the user about their visit regularity to the place.
-    This is the first question in the dependent chain.
-    """
-    try:
-        # Reset regularity data
-        _user_data()[user_id]['regularity'] = ''
-        _user_data()[user_id]['current_question'] = 'regularity'
-
-        options = messages[language]['options']['regularity']
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"regularity_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        inline_kb.add(*buttons)
-
-        # Use the question text directly
-        question_text = messages[language]['regularity_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_regularity: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    regularity_question.ask_regularity(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('regularity_'))
 def handle_regularity_selection(call):
-    """
-    Handles user selection for regularity question.
-    This is a pivotal question that affects the flow of subsequent questions.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        options = messages[language]['options']['regularity']
-        try:
-            selected_idx = callback_index(call.data, "regularity", options)
-        except (ValueError, IndexError):
-            safe_answer_callback(
-                call, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-            return
-
-        if 0 <= selected_idx < len(options):
-            selected_regularity = options[selected_idx]
-
-            # Store temporarily, don't commit until confirmed
-            _user_data()[user_id]['temp_regularity'] = selected_regularity
-
-            # Update the keyboard to show selection and add Confirm button
-            inline_kb = types.InlineKeyboardMarkup(row_width=1)
-            for idx, option in enumerate(options):
-                # Mark the selected option
-                text = f"✅ {option}" if idx == selected_idx else option
-                inline_kb.add(
-                    types.InlineKeyboardButton(
-                        text=text,
-                        callback_data=f"regularity_{idx}"))
-
-            # Add Confirm/Done button
-            done_text = messages[language]['done_button']
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=done_text,
-                    callback_data="confirm_regularity"))
-
-            try:
-                bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    reply_markup=inline_kb
-                )
-            except telebot.apihelper.ApiTelegramException as e:
-                # Ignore "message is not modified" error
-                if "message is not modified" not in str(e):
-                    logging.exception(
-                        f"Error in handle_regularity_selection: {e}")
-
-            # Notify user of selection (but not confirmation yet)
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {selected_regularity}")
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-    except Exception as e:
-        logging.exception(f"Error in handle_regularity_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    regularity_question.handle_regularity_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data ==
                             "confirm_regularity")
 def confirm_regularity(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        anon_id = get_anonymous_id(user_id)
-
-        # Transfer from temp storage to actual storage
-        if 'temp_regularity' in _user_data()[user_id]:
-            selected_regularity = _user_data()[user_id]['temp_regularity']
-            previous_regularity = _user_data()[user_id].get('regularity', '')
-
-            # Log regularity change
-            if previous_regularity != selected_regularity:
-                flow_logger.info(
-                    f"User {anon_id}: Changed regularity from '{previous_regularity}' to '{selected_regularity}'")
-
-            # Save the new selection
-            _user_data()[user_id]['regularity'] = selected_regularity
-            _user_profiles().setdefault(
-                user_id, {})['regularity'] = selected_regularity
-            _user_data()[user_id].pop('temp_regularity')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Clear dependent fields if appropriate - this is critical for
-            # properly clearing dependencies
-            if previous_regularity != selected_regularity:
-                cleared_fields = clear_dependent_fields(
-                    user_id, 'regularity', previous_regularity, selected_regularity)
-                if cleared_fields:
-                    flow_logger.info(
-                        f"User {anon_id}: Cleared fields due to regularity change: {cleared_fields}")
-
-            # Confirm to user
-            safe_answer_callback(
-                call, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_regularity)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            # Define skip patterns explicitly
-            skip_to_wishlist_options = [
-                "One-time visit", "Разове відвідування",
-                "Visited before 2022 but not anymore",
-                "Відвідував(-ла) до 2022 р., але не зараз",
-                "Prefer not to disclose", "Надаю перевагу не вказувати"
-            ]
-
-            # Check if any skip pattern is found in the selected regularity
-            should_skip = False
-            for pattern in skip_to_wishlist_options:
-                if pattern in selected_regularity:
-                    should_skip = True
-                    break
-
-            # Handle next steps based on modification state and selection
-            if _user_data()[user_id].get('modifying'):
-                if not should_skip:
-                    # Proceed to noticed_changes if follow-up is required
-                    flow_logger.info(
-                        f"User {anon_id}: In modification flow, proceeding to noticed_changes")
-                    ask_noticed_changes(chat_id, user_id, language)
-                else:
-                    # No follow-ups needed, go to final confirmation
-                    flow_logger.info(
-                        f"User {anon_id}: In modification flow, skipping follow-ups, going to final confirmation")
-                    _user_data()[user_id].pop('modifying')
-                    _user_data()[user_id].pop('modifying_field', None)
-                    ask_final_confirmation(chat_id, user_id, language)
-            else:
-                # Normal flow
-                if should_skip:
-                    # Skip directly to wishlist for one-time visits
-                    flow_logger.info(
-                        f"User {anon_id}: Skipping directly to wishlist")
-                    ask_wishlist(chat_id, user_id, language)
-                else:
-                    # Regular multiple visit paths
-                    flow_logger.info(
-                        f"User {anon_id}: Regular visitor, proceeding to noticed_changes")
-                    ask_noticed_changes(chat_id, user_id, language)
-        else:
-            safe_answer_callback(
-                call,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_regularity: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    regularity_question.confirm_regularity(
+        _ctx(),
+        call,
+        RegularityCallbacks(
+            ask_noticed_changes=ask_noticed_changes,
+            ask_wishlist=ask_wishlist,
+            ask_final_confirmation=ask_final_confirmation,
+            clear_dependent_fields=clear_dependent_fields,
+            get_anonymous_id=get_anonymous_id,
+        ),
+    )
 
 
 def ask_frequency_change(chat_id, user_id, language):

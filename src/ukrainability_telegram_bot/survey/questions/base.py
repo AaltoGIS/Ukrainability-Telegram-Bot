@@ -43,6 +43,39 @@ class PurposeCallbacks:
 
 
 @dataclass(frozen=True)
+class EnjoymentCallbacks:
+    ask_visitor_type: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+
+
+@dataclass(frozen=True)
+class VisitorTypeCallbacks:
+    ask_duration: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+
+
+@dataclass(frozen=True)
+class DurationCallbacks:
+    ask_accessibility: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+
+
+@dataclass(frozen=True)
+class AccessibilityCallbacks:
+    ask_regularity: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+
+
+@dataclass(frozen=True)
+class RegularityCallbacks:
+    ask_noticed_changes: Callable[[int, int, str], Any]
+    ask_wishlist: Callable[[int, int, str], Any]
+    ask_final_confirmation: Callable[[int, int, str], Any]
+    clear_dependent_fields: Callable[[int, str, Any, Any], list[str]]
+    get_anonymous_id: Callable[[int], str]
+
+
+@dataclass(frozen=True)
 class DescriptionCallbacks:
     ask_final_confirmation: Callable[[int, int, str], Any]
     description_handler: Callable[..., Any]

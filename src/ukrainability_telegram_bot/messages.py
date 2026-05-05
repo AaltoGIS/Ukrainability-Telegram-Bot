@@ -135,6 +135,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'selected': "Selected:",
         'unselected': "Unselected:",
         'you_selected': "You selected:",
+        'response_confirmed': "Response confirmed",
+        'select_option_first': "Please select an option first",
         'voice_message_submitted': "Voice message submitted.",
         'error_occurred': "An error occurred. Please try again later.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
@@ -153,6 +155,12 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'description_retry_or_skip': "Would you like to try again or skip the description?",
         'selections_saved': "Selections saved",
         'please_select_at_least_one': "Please select at least one option.",
+        'visitor_type_custom_instruction': (
+            "You can also type your own suggestion as a text message. When finished, press Done."
+        ),
+        'accessibility_custom_instruction': (
+            "You can also type your own mode of travel as a text message. When finished, press Done."
+        ),
         'labels': {
             'location': 'Location',
             'enjoyment': 'Enjoyment',
@@ -372,6 +380,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'selected': "Вибрано:",
         'unselected': "Знято вибір:",
         'you_selected': "Ви обрали:",
+        'response_confirmed': "Відповідь підтверджено",
+        'select_option_first': "Спочатку виберіть варіант",
         'voice_message_submitted': "Голосове повідомлення надіслано.",
         'error_occurred': "Виникла помилка. Будь ласка, спробуйте пізніше.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
@@ -390,6 +400,12 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         ),
         'description_retry_or_skip': "Хочете спробувати знову чи пропустити опис?",
         'selections_saved': "Вибір збережено",
+        'visitor_type_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
+        'accessibility_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
         'labels': {
             'location': 'Локація',
             'enjoyment': 'Якість часу',
