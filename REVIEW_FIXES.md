@@ -40,11 +40,12 @@ modernization commit.
 - Added `stop_cleanup_scheduler()` and locking around cleanup start/stop.
 - Kept opportunistic cleanup on startup, then wait for the configured interval between future cleanup passes.
 - After cleanup errors, retry after the shorter error backoff instead of stacking it with the normal cleanup interval.
-- Extracted cleanup scheduling and voice-retention cleanup into `cleanup.py` with temporary bind-set dependencies; Phase 2 of the planned refactor will replace this with `AppContext`.
-- Extracted Telegram send/edit/callback helpers and the message-id registry into `telegram_io.py` with temporary bind-set dependencies; Phase 2 will replace this with `AppContext`.
+- Introduced `AppContext` as the runtime dependency container and `SessionStore` as the owner of user session, profile, and tracked message-id state.
+- Retired the temporary `cleanup.bind()` and `telegram_io.bind()` patterns; both modules now receive `AppContext` explicitly.
+- Removed the legacy `user_data`, `user_profiles`, and lock globals from `bot.py`; remaining survey handlers access session state through `ctx.sessions`.
 - Extracted runtime configuration, logging setup, polling retry logic, and the temporary `HandlerRegistry` into `runtime.py`; `bot.py` now keeps wrappers so the CLI and legacy imports continue to work.
 
 ## Remaining Review Items
 
-- The larger architecture split into `survey/flow.py`, an app context, and per-question modules remains future work.
+- The larger architecture split into `survey/flow.py` and per-question modules remains future work.
 - Survey-flow integration tests around mocked Telegram callbacks remain future work; current coverage focuses on config/security/storage/runtime helpers.

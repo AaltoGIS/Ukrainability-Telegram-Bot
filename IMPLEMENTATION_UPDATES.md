@@ -59,7 +59,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, and session globals — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, and `sessions.py`. `bot.py` still owns survey handlers; further split is the planned refactor. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by `bot.py`. |
 
 ## What is intentionally unchanged

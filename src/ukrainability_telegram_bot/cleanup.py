@@ -1,9 +1,4 @@
-"""Cleanup scheduler and voice-file retention helpers.
-
-Phase 1 refactor note: this module uses temporary bind-set dependencies to
-avoid importing from the legacy `bot.py` module. Phase 2 replaces these
-module-level bindings with `AppContext` parameters.
-"""
+"""Cleanup scheduler and voice-file retention helpers."""
 
 from __future__ import annotations
 
@@ -11,67 +6,25 @@ import logging
 import os
 import threading
 import time
-from typing import Protocol
 
-
-class CleanupStaleSessions(Protocol):
-    def __call__(self, *, hours_inactive: int) -> None: ...
-
-
-_voice_files_dir: str | None = None
-_voice_retention_days = 30
-_cleanup_interval_seconds = 24 * 60 * 60
-_flow_logger: logging.Logger | None = None
-_cleanup_stale_sessions: CleanupStaleSessions | None = None
+from .app import AppContext
 
 cleanup_stop_event = threading.Event()
 cleanup_thread_lock = threading.Lock()
 cleanup_thread: threading.Thread | None = None
 
 
-def bind(
-    *,
-    voice_files_dir: str,
-    voice_retention_days: int,
-    cleanup_interval_seconds: int,
-    flow_logger: logging.Logger,
-    cleanup_stale_sessions: CleanupStaleSessions,
-) -> None:
-    """Bind temporary legacy dependencies until AppContext replaces them."""
-
-    global _voice_files_dir
-    global _voice_retention_days
-    global _cleanup_interval_seconds
-    global _flow_logger
-    global _cleanup_stale_sessions
-
-    _voice_files_dir = voice_files_dir
-    _voice_retention_days = voice_retention_days
-    _cleanup_interval_seconds = cleanup_interval_seconds
-    _flow_logger = flow_logger
-    _cleanup_stale_sessions = cleanup_stale_sessions
-
-
-def _require_bound() -> tuple[str, logging.Logger, CleanupStaleSessions]:
-    if (
-        _voice_files_dir is None
-        or _flow_logger is None
-        or _cleanup_stale_sessions is None
-    ):
-        raise RuntimeError("cleanup.bind() must be called before use")
-    return _voice_files_dir, _flow_logger, _cleanup_stale_sessions
-
-
-def cleanup_old_voice_messages(days_to_keep: int | None = None) -> None:
+def cleanup_old_voice_messages(ctx: AppContext, days_to_keep: int | None = None) -> None:
     """
     Cleans up voice messages older than the specified number of days.
     This prevents unlimited storage growth.
     """
 
-    voice_files_dir, flow_logger, _ = _require_bound()
+    voice_files_dir = str(ctx.config.voice_files_dir)
+    flow_logger = ctx.flow_logger
     try:
         if days_to_keep is None:
-            days_to_keep = _voice_retention_days
+            days_to_keep = ctx.config.voice_retention_days
         flow_logger.info(
             f"Starting voice message cleanup, keeping messages from last {days_to_keep} days")
         current_time = time.time()
@@ -100,16 +53,21 @@ def cleanup_old_voice_messages(days_to_keep: int | None = None) -> None:
         flow_logger.error(f"Error in voice message cleanup: {e}")
 
 
-def cleanup_scheduler() -> None:
+def cleanup_scheduler(ctx: AppContext) -> None:
     """Periodically runs cleanup tasks in the background."""
 
-    _, flow_logger, cleanup_stale_sessions = _require_bound()
-    voice_retention_days = _voice_retention_days
-    cleanup_interval_seconds = _cleanup_interval_seconds
+    flow_logger = ctx.flow_logger
+    voice_retention_days = ctx.config.voice_retention_days
+    cleanup_interval_seconds = ctx.config.cleanup_interval_seconds
 
     def run_cleanup_pass() -> None:
-        cleanup_stale_sessions(hours_inactive=48)
-        cleanup_old_voice_messages(days_to_keep=voice_retention_days)
+        removed_users = ctx.sessions.evict_inactive(hours=48)
+        if removed_users:
+            flow_logger.info(
+                "Stale session cleanup complete. Removed %s sessions.",
+                len(removed_users),
+            )
+        cleanup_old_voice_messages(ctx, days_to_keep=voice_retention_days)
 
     while not cleanup_stop_event.is_set():
         try:
@@ -124,15 +82,14 @@ def cleanup_scheduler() -> None:
             break
 
 
-def start_cleanup_scheduler() -> threading.Thread:
+def start_cleanup_scheduler(ctx: AppContext) -> threading.Thread:
     """Start the background cleanup thread if it is not already running."""
 
     global cleanup_thread
-    _require_bound()
     with cleanup_thread_lock:
         if cleanup_thread is None or not cleanup_thread.is_alive():
             cleanup_stop_event.clear()
-            cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
+            cleanup_thread = threading.Thread(target=cleanup_scheduler, args=(ctx,), daemon=True)
             cleanup_thread.start()
     return cleanup_thread
 

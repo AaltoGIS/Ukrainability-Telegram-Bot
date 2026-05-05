@@ -128,12 +128,14 @@ this repository only prepares the package for building and publishing.
 
 ```text
 src/ukrainability_telegram_bot/
+  app.py        # AppContext dependency container
   bot.py        # Telegram survey handlers and compatibility entrypoint
   cli.py        # ukrainability-bot entrypoint
   cleanup.py    # voice retention and cleanup scheduler
   config.py     # environment and legacy credentials loading
   runtime.py    # runtime configuration, polling, and handler registry
   security.py   # Fernet helpers
+  sessions.py   # thread-safe user/session/message-id state
   storage.py    # SQLite helpers
   telegram_io.py # Telegram send/edit/callback helpers
   keyboards.py  # keyboard construction helper
