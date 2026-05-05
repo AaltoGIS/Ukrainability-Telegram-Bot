@@ -13,20 +13,24 @@ def generate_unique_nickname(
     *,
     adjectives: Sequence[str] = ADJECTIVES,
     nouns: Sequence[str] = NOUNS,
+    separator: str = "",
+    number_range: int = 100,
+    number_width: int = 2,
     rng: random.Random | None = None,
 ) -> str:
     randomizer = rng or random
     used = set(used_nicknames)
-    total = len(adjectives) * len(nouns) * 100
+    total = len(adjectives) * len(nouns) * number_range
     if len(used) >= total:
         raise RuntimeError("No nickname combinations are available")
 
     while True:
-        nickname = (
-            f"{randomizer.choice(adjectives)}"
-            f"{randomizer.choice(nouns)}"
-            f"{randomizer.randint(0, 99):02d}"
+        parts = (
+            randomizer.choice(adjectives),
+            randomizer.choice(nouns),
+            f"{randomizer.randint(0, number_range - 1):0{number_width}d}",
         )
+        nickname = separator.join(parts) if separator else "".join(parts)
         if nickname not in used:
             return nickname
 

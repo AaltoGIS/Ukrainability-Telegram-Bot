@@ -10,7 +10,6 @@ import logging
 import time
 import datetime
 import sqlite3
-import random
 from pathlib import Path
 
 import telebot
@@ -187,19 +186,17 @@ nouns = legacy_nicknames.LEGACY_NOUNS
 
 # Helper functions
 def generate_unique_nickname():
-    max_combinations = len(adjectives) * len(nouns) * \
-        1000  # Adjusted for number range 0-999
-    used_nicknames = get_all_used_nicknames()
-    if len(used_nicknames) >= max_combinations:
-        # All combinations have been used
-        raise Exception("All nickname combinations have been used.")
-    while True:
-        adjective = random.choice(adjectives)
-        noun = random.choice(nouns)
-        number = random.randint(0, 999)
-        nickname = f"{adjective} {noun} {number}"
-        if nickname not in used_nicknames:
-            return nickname
+    try:
+        return legacy_nicknames.generate_unique_nickname(
+            get_all_used_nicknames(),
+            adjectives=adjectives,
+            nouns=nouns,
+            separator=" ",
+            number_range=1000,
+            number_width=0,
+        )
+    except RuntimeError as exc:
+        raise Exception("All nickname combinations have been used.") from exc
 
 
 def get_all_used_nicknames():
