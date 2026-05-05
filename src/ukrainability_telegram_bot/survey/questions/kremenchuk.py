@@ -23,6 +23,9 @@ from ...telegram_io import (
 from .base import register
 
 
+OTHER_OPTION_INDEX = 6
+
+
 @dataclass(frozen=True)
 class KremenchukCallbacks:
     ask_description: Callable[[int, int, str], Any]
@@ -43,7 +46,11 @@ class KremenchukQuestion:
 
 def _options(language: str) -> list[str]:
     all_options = messages[language]["options"]["kremenchuk"]
-    return all_options[:-2] + all_options[-1:]
+    return [
+        option
+        for idx, option in enumerate(all_options)
+        if idx != OTHER_OPTION_INDEX
+    ]
 
 
 def ask_kremenchuk(ctx: AppContext, chat_id: int, user_id: int, language: str) -> None:

@@ -62,6 +62,35 @@ def test_confirm_noticed_changes_positive_asks_for_details(app_context):
     ask_changes_detail.assert_called_once_with(456, user_id, "en")
 
 
+def test_confirm_noticed_changes_no_change_skips_to_wishlist(app_context):
+    user_id = 123
+    selected_idx = 2
+    selected = messages["en"]["options"]["noticed_changes"][selected_idx]
+    app_context.sessions.set_data(user_id, "language", "en")
+    app_context.sessions.set_data(user_id, "temp_noticed_changes", selected)
+    app_context.sessions.set_data(user_id, "temp_noticed_changes_idx", selected_idx)
+    app_context.sessions.set_data(user_id, "noticed_changes", "")
+    ask_changes_detail = MagicMock()
+    ask_wishlist = MagicMock()
+    callbacks = NoticedChangesCallbacks(
+        ask_changes_detail=ask_changes_detail,
+        ask_wishlist=ask_wishlist,
+        ask_final_confirmation=MagicMock(),
+        clear_dependent_fields=MagicMock(return_value=[]),
+        get_anonymous_id=MagicMock(return_value="anon"),
+    )
+
+    noticed_changes.confirm_noticed_changes(
+        app_context,
+        _call("confirm_noticed_changes", user_id=user_id),
+        callbacks,
+    )
+
+    assert app_context.sessions.get_data(user_id, "noticed_changes") == selected
+    ask_wishlist.assert_called_once_with(456, user_id, "en")
+    ask_changes_detail.assert_not_called()
+
+
 def test_frequency_change_did_not_visit_before_skips_to_wishlist(app_context):
     user_id = 123
     did_not_visit_idx = 3

@@ -21,15 +21,12 @@ from .pseudonym import hash_user_id
 from . import runtime as runtime_module
 from .runtime import flow_logger
 from .storage import initialize_database as initialize_storage_database
-from .survey.persistence import (
-    DatabaseSaveError,
-    EncryptionUnavailableError,
-    save_response,
-)
 from .survey.questions import consent as consent_question
 from .survey.questions import description as description_question
 from .survey.questions import accessibility as accessibility_question
 from .survey.questions import changes_detail as changes_detail_question
+from .survey.questions import confirmation as confirmation_question
+from .survey.questions import demographics as demographics_question
 from .survey.questions import duration as duration_question
 from .survey.questions import enjoyment as enjoyment_question
 from .survey.questions import frequency as frequency_question
@@ -39,17 +36,21 @@ from .survey.questions import location as location_question
 from .survey.questions import noticed_changes as noticed_changes_question
 from .survey.questions import purpose as purpose_question
 from .survey.questions import regularity as regularity_question
+from .survey.questions import restart as restart_question
 from .survey.questions import visitor_type as visitor_type_question
 from .survey.questions import welcome as welcome_question
 from .survey.questions import wishlist as wishlist_question
 from .survey.questions.accessibility import AccessibilityCallbacks
 from .survey.questions.changes_detail import ChangesDetailCallbacks
+from .survey.questions.confirmation import ConfirmationCallbacks
+from .survey.questions.demographics import DemographicsCallbacks
 from .survey.questions.duration import DurationCallbacks
 from .survey.questions.enjoyment import EnjoymentCallbacks
 from .survey.questions.frequency import FrequencyCallbacks
 from .survey.questions.kremenchuk import KremenchukCallbacks
 from .survey.questions.noticed_changes import NoticedChangesCallbacks
 from .survey.questions.regularity import RegularityCallbacks
+from .survey.questions.restart import RestartCallbacks
 from .survey.questions.visitor_type import VisitorTypeCallbacks
 from .survey.questions.wishlist import WishlistCallbacks
 from .survey.questions.base import (
@@ -889,623 +890,79 @@ def update_wishlist_keyboard(message, user_id, language, options):
 
 
 # Socioeconomic questions
+def _demographics_callbacks():
+    return DemographicsCallbacks(
+        ask_gender=ask_gender,
+        ask_occupation=ask_occupation,
+        ask_income=ask_income,
+        ask_kremenchuk=ask_kremenchuk,
+        ask_description=ask_description,
+        ask_final_confirmation=ask_final_confirmation,
+    )
+
+
 def ask_age(chat_id, user_id, language):
-    try:
-        if not _user_data()[user_id].get('modifying'):
-            if user_id in _user_profiles() and 'age' in _user_profiles()[user_id]:
-                _user_data()[user_id]['age'] = _user_profiles()[user_id]['age']
-                ask_gender(chat_id, user_id, language)
-                return
-
-        # Single-select question, set current_question
-        _user_data()[user_id]['current_question'] = 'age'
-        options = messages[language]['options']['age']
-        inline_kb = create_inline_keyboard(options, 'age', single_select=True)
-
-        # Use the question text directly
-        question_text = messages[language]['age_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_age: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.ask_age(
+        _ctx(), chat_id, user_id, language, _demographics_callbacks()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('age_'))
 def handle_age_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-
-        # Ensure user exists in _user_data() and has language
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            # Try to get language from _user_profiles()
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                # Initialize user data if needed
-                if user_id not in _user_data():
-                    _user_data()[user_id] = {}
-                _user_data()[user_id]['language'] = _user_profiles()[user_id]['language']
-                language = _user_data()[user_id]['language']
-            else:
-                # Cannot proceed without language
-                bot.answer_callback_query(
-                    call.id, "Please start again with /start")
-                bot.send_message(
-                    chat_id,
-                    "Session expired. Please use /start to begin.\nСесія закінчилася. Будь ласка, використайте /start для початку.")
-                return
-        else:
-            language = _user_data()[user_id]['language']
-
-        options = messages[language]['options']['age']
-        try:
-            idx = callback_index(call.data, "age", options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-            return
-
-        selected_age = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_age'] = selected_age
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"age_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_age"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in handle_age_selection: {e}")
-
-        # Notify user of selection (but not confirmation yet)
-        bot.answer_callback_query(
-            call.id, f"{messages[language]['selected']} {selected_age}")
-    except Exception as e:
-        logging.exception(f"Error in handle_age_selection: {e}")
-        try:
-            # Safely get language with a fallback
-            language = _user_data().get(user_id, {}).get('language', 'en')
-            error_msg = messages[language].get(
-                'error_occurred', "An error occurred. Please try again later.")
-        except Exception:
-            # Ultimate fallback if everything else fails
-            error_msg = "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше."
-
-        try:
-            bot.send_message(chat_id, error_msg)
-        except Exception:
-            logging.critical("Failed to send error message to user")
+    demographics_question.handle_age_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_age")
 def confirm_age(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-
-        # Ensure user exists in _user_data() and has language
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            # Try to get language from _user_profiles()
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                # Initialize user data if needed
-                if user_id not in _user_data():
-                    _user_data()[user_id] = {}
-                _user_data()[user_id]['language'] = _user_profiles()[user_id]['language']
-                language = _user_data()[user_id]['language']
-            else:
-                # Cannot proceed without language
-                bot.answer_callback_query(
-                    call.id, "Please start again with /start")
-                bot.send_message(
-                    chat_id,
-                    "Session expired. Please use /start to begin.\nСесія закінчилася. Будь ласка, використайте /start для початку.")
-                return
-        else:
-            language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_age' in _user_data()[user_id]:
-            selected_age = _user_data()[user_id]['temp_age']
-            _user_data()[user_id]['age'] = selected_age
-            _user_profiles().setdefault(user_id, {})['age'] = selected_age
-            _user_data()[user_id].pop('temp_age')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Confirm to user
-            bot.answer_callback_query(
-                call.id, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_age)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            ask_gender(chat_id, user_id, language)
-        else:
-            bot.answer_callback_query(
-                call.id,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_age: {e}")
-        try:
-            # Safely get language with a fallback
-            language = _user_data().get(user_id, {}).get('language', 'en')
-            error_msg = messages[language].get(
-                'error_occurred', "An error occurred. Please try again later.")
-        except Exception:
-            # Ultimate fallback if everything else fails
-            error_msg = "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше."
-
-        try:
-            bot.send_message(chat_id, error_msg)
-        except Exception:
-            logging.critical("Failed to send error message to user")
+    demographics_question.confirm_age(_ctx(), call, _demographics_callbacks())
 
 
 def ask_gender(chat_id, user_id, language):
-    try:
-        if not _user_data()[user_id].get('modifying'):
-            if user_id in _user_profiles() and 'gender' in _user_profiles()[user_id]:
-                _user_data()[user_id]['gender'] = _user_profiles()[user_id]['gender']
-                ask_occupation(chat_id, user_id, language)
-                return
-
-        _user_data()[user_id]['current_question'] = 'gender'
-        options = messages[language]['options']['gender']
-        inline_kb = create_inline_keyboard(
-            options, 'gender', single_select=True)
-
-        # Use the question text directly
-        question_text = messages[language]['gender_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_gender: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.ask_gender(
+        _ctx(), chat_id, user_id, language, _demographics_callbacks()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('gender_'))
 def handle_gender_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        options = messages[language]['options']['gender']
-        try:
-            idx = callback_index(call.data, "gender", options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language]['invalid_selection'])
-            return
-
-        selected_gender = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_gender'] = selected_gender
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text, callback_data=f"gender_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_gender"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in handle_gender_selection: {e}")
-
-        # Notify user of selection (but not confirmation yet)
-        bot.answer_callback_query(
-            call.id, f"{messages[language]['selected']} {selected_gender}")
-    except Exception as e:
-        logging.exception(f"Error in handle_gender_selection: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.handle_gender_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_gender")
 def confirm_gender(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_gender' in _user_data()[user_id]:
-            selected_gender = _user_data()[user_id]['temp_gender']
-            _user_data()[user_id]['gender'] = selected_gender
-            _user_profiles().setdefault(user_id, {})['gender'] = selected_gender
-            _user_data()[user_id].pop('temp_gender')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Confirm to user
-            bot.answer_callback_query(
-                call.id, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_gender)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            if _user_data()[user_id].get('modifying'):
-                field_modified = _user_data()[user_id].get('modifying_field')
-                _user_data()[user_id].pop('modifying', None)
-                _user_data()[user_id].pop('modifying_field', None)
-
-                if field_modified != 'description':
-                    ask_final_confirmation(chat_id, user_id, language)
-                else:
-                    ask_description(chat_id, user_id, language)
-            else:
-                ask_occupation(chat_id, user_id, language)
-        else:
-            bot.answer_callback_query(
-                call.id,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_gender: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.confirm_gender(_ctx(), call, _demographics_callbacks())
 
 
 def ask_occupation(chat_id, user_id, language):
-    try:
-        if not _user_data()[user_id].get('modifying'):
-            if user_id in _user_profiles() and 'occupation' in _user_profiles()[user_id]:
-                _user_data()[user_id]['occupation'] = _user_profiles()[user_id]['occupation']
-                ask_income(chat_id, user_id, language)
-                return
-
-        _user_data()[user_id]['current_question'] = 'occupation'
-        options = messages[language]['options']['occupation']
-        inline_kb = create_inline_keyboard(
-            options, 'occupation', single_select=True)
-
-        # Use the question text directly
-        question_text = messages[language]['occupation_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_occupation: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.ask_occupation(
+        _ctx(), chat_id, user_id, language, _demographics_callbacks()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('occupation_'))
 def handle_occupation_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        options = messages[language]['options']['occupation']
-        try:
-            idx = callback_index(call.data, "occupation", options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language]['invalid_selection'])
-            return
-
-        selected_occupation = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_occupation'] = selected_occupation
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"occupation_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_occupation"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in handle_occupation_selection: {e}")
-
-        # Notify user of selection (but not confirmation yet)
-        bot.answer_callback_query(
-            call.id, f"{messages[language]['selected']} {selected_occupation}")
-    except Exception as e:
-        logging.exception(f"Error in handle_occupation_selection: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.handle_occupation_selection(_ctx(), call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data ==
-                            "confirm_occupation")
+@bot.callback_query_handler(func=lambda call: call.data == "confirm_occupation")
 def confirm_occupation(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_occupation' in _user_data()[user_id]:
-            selected_occupation = _user_data()[user_id]['temp_occupation']
-            _user_data()[user_id]['occupation'] = selected_occupation
-            _user_profiles().setdefault(
-                user_id, {})['occupation'] = selected_occupation
-            _user_data()[user_id].pop('temp_occupation')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Confirm to user
-            bot.answer_callback_query(
-                call.id, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_occupation)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            if _user_data()[user_id].get('modifying'):
-                field_modified = _user_data()[user_id].get('modifying_field')
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-
-                if field_modified != 'description':
-                    ask_final_confirmation(chat_id, user_id, language)
-                else:
-                    ask_description(chat_id, user_id, language)
-            else:
-                ask_income(chat_id, user_id, language)
-        else:
-            bot.answer_callback_query(
-                call.id,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_occupation: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.confirm_occupation(_ctx(), call, _demographics_callbacks())
 
 
-
-# Income and Kremenchuk handlers
 def ask_income(chat_id, user_id, language):
-    try:
-        if not _user_data()[user_id].get('modifying'):
-            if user_id in _user_profiles() and 'income' in _user_profiles()[user_id]:
-                _user_data()[user_id]['income'] = _user_profiles()[user_id]['income']
-                # Always check if kremenchuk is already stored in _user_profiles()
-                if 'kremenchuk' in _user_profiles()[user_id]:
-                    _user_data()[user_id]['kremenchuk'] = _user_profiles()[user_id]['kremenchuk']
-                    # Skip to description directly
-                    ask_description(chat_id, user_id, language)
-                    return
-                else:
-                    # Ask kremenchuk only once as part of socioeconomic
-                    # questions
-                    ask_kremenchuk(chat_id, user_id, language)
-                    return
-
-        _user_data()[user_id]['current_question'] = 'income'
-        options = messages[language]['options']['income']
-        inline_kb = create_inline_keyboard(
-            options, 'income', single_select=True)
-
-        # Use the question text directly
-        question_text = messages[language]['income_question']
-
-        bot.send_message(
-            chat_id,
-            question_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_income: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    demographics_question.ask_income(
+        _ctx(), chat_id, user_id, language, _demographics_callbacks()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('income_'))
 def handle_income_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-        options = messages[language]['options']['income']
-        try:
-            idx = callback_index(call.data, "income", options)
-        except (ValueError, IndexError):
-            bot.answer_callback_query(
-                call.id, messages[language]['invalid_selection'])
-            return
-
-        selected_income = options[idx]
-
-        # Store temporarily, don't commit until confirmed
-        _user_data()[user_id]['temp_income'] = selected_income
-
-        # Update keyboard to show selection and add Confirm button
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        for i, option in enumerate(options):
-            # Mark the selected option
-            text = f"✅ {option}" if i == idx else option
-            inline_kb.add(
-                types.InlineKeyboardButton(
-                    text=text, callback_data=f"income_{i}"))
-
-        # Add Confirm/Done button
-        done_text = messages[language]['done_button']
-        inline_kb.add(
-            types.InlineKeyboardButton(
-                text=done_text,
-                callback_data="confirm_income"))
-
-        try:
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=inline_kb
-            )
-        except telebot.apihelper.ApiTelegramException as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e):
-                logging.exception(f"Error in handle_income_selection: {e}")
-
-        # Notify user of selection (but not confirmation yet)
-        bot.answer_callback_query(
-            call.id, f"{messages[language]['selected']} {selected_income}")
-    except Exception as e:
-        logging.exception(f"Error in handle_income_selection: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.handle_income_selection(_ctx(), call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_income")
 def confirm_income(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        language = _user_data()[user_id]['language']
-
-        # Transfer from temp storage to actual storage
-        if 'temp_income' in _user_data()[user_id]:
-            selected_income = _user_data()[user_id]['temp_income']
-            _user_data()[user_id]['income'] = selected_income
-            _user_profiles().setdefault(user_id, {})['income'] = selected_income
-            _user_data()[user_id].pop('temp_income')
-
-            # Remove current_question marker
-            _user_data()[user_id].pop('current_question', None)
-
-            # Confirm to user
-            bot.answer_callback_query(
-                call.id, "Response confirmed" if language == 'en' else "Відповідь підтверджено")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Show confirmed response
-            bot.send_message(
-                chat_id,
-                f"<b>{messages[language]['your_response']}</b> <i>{escape_html(selected_income)}</i>",
-                parse_mode='HTML')
-
-            # Hide keyboard before moving to next question
-            hide_keyboard(chat_id)
-
-            if _user_data()[user_id].get('modifying'):
-                field_modified = _user_data()[user_id].get('modifying_field')
-                _user_data()[user_id].pop('modifying')
-                _user_data()[user_id].pop('modifying_field', None)
-
-                if field_modified != 'description':
-                    ask_final_confirmation(chat_id, user_id, language)
-                    return
-                else:
-                    ask_description(chat_id, user_id, language)
-            else:
-                # Check if kremenchuk has already been asked once
-                if user_id in _user_profiles() and 'kremenchuk' in _user_profiles()[user_id]:
-                    # If already asked once, just use the stored value and go
-                    # to description
-                    _user_data()[user_id]['kremenchuk'] = _user_profiles()[user_id]['kremenchuk']
-                    ask_description(chat_id, user_id, language)
-                else:
-                    # Ask kremenchuk only once as part of socioeconomic
-                    # questions
-                    ask_kremenchuk(chat_id, user_id, language)
-        else:
-            bot.answer_callback_query(
-                call.id,
-                "Please select an option first" if language == 'en' else "Спочатку виберіть варіант")
-    except Exception as e:
-        logging.exception(f"Error in confirm_income: {e}")
-        bot.send_message(chat_id, messages[language]['error_occurred'])
+    demographics_question.confirm_income(_ctx(), call, _demographics_callbacks())
 
 
 # Kremenchuk handler modifications
@@ -1570,387 +1027,48 @@ def handle_description(message):
 
 
 # Response confirmation and modification
+def _confirmation_callbacks():
+    return ConfirmationCallbacks(
+        ask_enjoyment=ask_enjoyment,
+        ask_purpose_visit=ask_purpose_visit,
+        ask_regularity=ask_regularity,
+        ask_accessibility=ask_accessibility,
+        ask_noticed_changes=ask_noticed_changes,
+        ask_changes_detail=ask_changes_detail,
+        ask_wishlist=ask_wishlist,
+        ask_kremenchuk=ask_kremenchuk,
+        ask_age=ask_age,
+        ask_gender=ask_gender,
+        ask_occupation=ask_occupation,
+        ask_income=ask_income,
+        ask_description=ask_description,
+        ask_visitor_type=ask_visitor_type,
+        ask_duration=ask_duration,
+        ask_continue_or_stop=ask_continue_or_stop,
+        save_data_and_restart=save_data_and_restart,
+        get_anonymous_id=get_anonymous_id,
+    )
+
+
 def ask_final_confirmation(chat_id, user_id, language):
-    """
-    Shows a summary of all responses and asks for confirmation.
-    This is the convergence point after all modifications.
-    """
-    try:
-        # Ensure kremenchuk is loaded from profiles if available
-        if 'kremenchuk' not in _user_data()[user_id] and user_id in _user_profiles() and 'kremenchuk' in _user_profiles()[user_id]:
-            _user_data()[user_id]['kremenchuk'] = _user_profiles()[user_id]['kremenchuk']
-
-        # Display a header message
-        header_message = (
-            "Here's a summary of your responses. Please review them carefully:" if language == 'en' else
-            "Ось підсумок ваших відповідей. Будь ласка, уважно перегляньте їх:"
-        )
-        bot.send_message(chat_id, header_message)
-
-        # Add a small delay for better UX
-        time.sleep(0.5)
-
-        # Display the user's responses
-        responses_text = get_responses_text(user_id, language)
-        bot.send_message(chat_id, responses_text, parse_mode='HTML')
-
-        # Add another small delay for better UX
-        time.sleep(0.5)
-
-        # Ask if the user wants to modify any responses
-        options = [messages[language]['modify_responses'],
-                   messages[language]['confirm_submission']]
-        inline_kb = types.InlineKeyboardMarkup(row_width=2)
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"final_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        inline_kb.add(*buttons)
-
-        confirmation_text = (
-            "Is this information correct? You can modify any response or confirm submission." if language == 'en' else
-            "Чи правильна ця інформація? Ви можете змінити будь-яку відповідь або підтвердити подання."
-        )
-
-        bot.send_message(
-            chat_id,
-            confirmation_text,
-            reply_markup=inline_kb
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_final_confirmation: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    confirmation_question.ask_final_confirmation(_ctx(), chat_id, user_id, language)
 
 
 def get_responses_text(user_id, language):
-    try:
-        responses = _user_data()[user_id]
-        label_mapping = messages[language]['labels']
-
-        # Ensure visitor_type and duration_visit labels exist
-        if 'visitor_type' not in label_mapping:
-            label_mapping['visitor_type'] = "Type of visitors" if language == 'en' else "Тип відвідувачів"
-        if 'duration_visit' not in label_mapping:
-            label_mapping['duration_visit'] = "Duration of visit" if language == 'en' else "Тривалість відвідування"
-
-        # Remove frequency_change from field_order
-        field_order = [
-            'location',
-            'purpose_visit',
-            'enjoyment',
-            'visitor_type',
-            'duration_visit',
-            'accessibility',
-            'regularity',
-            'noticed_changes',
-            'changes_detail',
-            'wishlist',
-            'kremenchuk',
-            'description',
-            'age',
-            'gender',
-            'occupation',
-            'income'
-        ]
-
-        latitude_label = "Latitude" if language == 'en' else "Широта"
-        longitude_label = "Longitude" if language == 'en' else "Довгота"
-        skipped_text = "Skipped" if language == 'en' else "Пропущено"
-        voice_submitted_text = "Voice message submitted." if language == 'en' else "Голосове повідомлення надіслано."
-
-        lines = []
-
-        for field in field_order:
-            if field == 'location' and 'location' in responses:
-                loc = responses['location']
-                loc_label = label_mapping.get(
-                    'location', 'Location' if language == 'en' else 'Локація')
-                if loc.get('venue_title'):
-                    lines.append(
-                        f"<b>{loc_label}:</b> {escape_html(loc['venue_title'])}, {escape_html(loc['venue_address'])}")
-                else:
-                    lat = loc.get('latitude', '')
-                    lon = loc.get('longitude', '')
-                    lines.append(
-                        f"<b>{loc_label}:</b> {latitude_label} {lat}, {longitude_label} {lon}")
-
-            elif field == 'purpose_visit' and 'purpose_visit' in responses:
-                # Merge custom_purposes if available
-                predefined = responses['purpose_visit'] if isinstance(
-                    responses['purpose_visit'], list) else [responses['purpose_visit']]
-                custom = responses.get('custom_purposes', [])
-                all_purposes = predefined + custom
-                purposes = '; '.join(all_purposes)
-                label = label_mapping.get(
-                    'purpose_visit',
-                    'Purpose of visit' if language == 'en' else 'Мета візиту')
-                lines.append(f"<b>{label}:</b> {escape_html(purposes)}")
-
-            elif field == 'visitor_type' and 'visitor_type' in responses:
-                # Merge custom_visitor_types if available
-                predefined = responses['visitor_type'] if isinstance(
-                    responses['visitor_type'], list) else [responses['visitor_type']]
-                custom = responses.get('custom_visitor_types', [])
-                all_vtypes = predefined + custom
-                vtypes = '; '.join(all_vtypes)
-                vlabel = label_mapping.get(
-                    'visitor_type', 'Type of visitors' if language == 'en' else 'Тип відвідувачів')
-                lines.append(f"<b>{vlabel}:</b> {escape_html(vtypes)}")
-
-            elif field == 'accessibility' and 'accessibility' in responses:
-                # Merge custom_accessibility
-                predefined_acc = responses['accessibility'] if isinstance(responses['accessibility'], list) else (
-                    [responses['accessibility']] if responses['accessibility'] else [])
-                custom_acc = responses.get('custom_accessibility', [])
-                all_acc = predefined_acc + custom_acc
-                acc = '; '.join(all_acc)
-                alabel = label_mapping.get(
-                    'accessibility',
-                    'Accessibility' if language == 'en' else 'Доступність')
-                lines.append(f"<b>{alabel}:</b> {escape_html(acc)}")
-
-            elif field == 'changes_detail' and 'changes_detail' in responses:
-                # Merge custom_changes
-                predefined_cd = responses['changes_detail'] if isinstance(
-                    responses['changes_detail'], list) else [responses['changes_detail']]
-                custom_cd = responses.get('custom_changes', [])
-                all_cd = predefined_cd + custom_cd
-                changes = '; '.join(all_cd)
-                c_label = label_mapping.get(
-                    'changes_detail',
-                    'Changes detail' if language == 'en' else 'Деталі змін')
-                lines.append(f"<b>{c_label}:</b> {escape_html(changes)}")
-
-            elif field == 'wishlist' and 'wishlist' in responses:
-                # Merge custom_wishlist
-                predefined_wl = responses['wishlist'] if isinstance(responses['wishlist'], list) else (
-                    [responses['wishlist']] if responses['wishlist'] else [])
-                custom_wl = responses.get('custom_wishlist', [])
-                all_wl = predefined_wl + custom_wl
-                wishlist = '; '.join(all_wl)
-                w_label = label_mapping.get(
-                    'wishlist',
-                    'Improvements wished' if language == 'en' else 'Побажання покращень')
-                lines.append(f"<b>{w_label}:</b> {escape_html(wishlist)}")
-
-            elif field == 'kremenchuk' and ('kremenchuk' in responses or 'custom_kremenchuk' in responses):
-                # Merge kremenchuk and custom_kremenchuk
-                kremenchuk_base = responses.get('kremenchuk', '')
-                custom_kremenchuk = responses.get('custom_kremenchuk', [])
-
-                if kremenchuk_base or custom_kremenchuk:
-                    all_kremenchuk = []
-                    if kremenchuk_base:
-                        all_kremenchuk.append(kremenchuk_base)
-                    all_kremenchuk.extend(custom_kremenchuk)
-                    kremenchuk_text = '; '.join(all_kremenchuk)
-
-                    k_label = label_mapping.get(
-                        'kremenchuk',
-                        'Time living in Kremenchuk' if language == 'en' else 'Час проживання в Кременчуці')
-                    lines.append(
-                        f"<b>{k_label}:</b> {escape_html(kremenchuk_text)}")
-
-            elif field == 'description':
-                d_label = label_mapping.get(
-                    'description', 'Description' if language == 'en' else 'Опис')
-                description_text = responses.get('description', '')
-                voice_submitted = responses.get('voice_submitted', '')
-                description_done = responses.get('description_done', False)
-
-                if voice_submitted:
-                    lines.append(f"<b>{d_label}:</b> {voice_submitted_text}")
-                elif description_text.strip():
-                    lines.append(
-                        f"<b>{d_label}:</b> {escape_html(description_text)}")
-                else:
-                    lines.append(f"<b>{d_label}:</b> {skipped_text}")
-
-            else:
-                if field in responses:
-                    val = responses[field]
-                    flabel = label_mapping.get(
-                        field, field.capitalize() if language == 'en' else field.capitalize())
-                    if isinstance(val, list):
-                        val = '; '.join(val)
-                    if val and val.strip():
-                        lines.append(f"<b>{flabel}:</b> {escape_html(val)}")
-                    else:
-                        lines.append(f"<b>{flabel}:</b> ")
-
-        return '\n'.join(lines)
-
-    except Exception as e:
-        logging.exception(f"Error in get_responses_text: {e}")
-        return "Error retrieving responses."
+    return confirmation_question.get_responses_text(_ctx(), user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('final_'))
 def handle_final_confirmation_choice(call):
-    """
-    Handles user's decision to confirm or modify their responses.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        update_activity_timestamp(user_id)
-
-        anon_id = get_anonymous_id(user_id)
-
-        # Ensure language is set
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                _user_data()[user_id]['language'] = _user_profiles()[user_id]['language']
-            else:
-                bot.send_message(
-                    chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-                return
-
-        language = _user_data()[user_id]['language']
-        choice = callback_suffix(call.data, "final")
-
-        if choice == '0':  # Modify Responses
-            # Keep this log as it's modification-related
-            flow_logger.info(f"User {anon_id}: Starting modification process")
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(call, messages[language]['modify_responses'])
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-            ask_which_responses_to_modify(chat_id, user_id, language)
-        elif choice == '1':  # Confirm Submission
-            # Remove logging for normal confirmation flow
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, messages[language]['confirm_submission'])
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Save data
-            save_data_and_restart(
-                chat_id, user_id, language, restart_survey=False)
-
-            # After saving data, directly ask if user wants to continue or stop
-            ask_continue_or_stop(chat_id, user_id, language)
-
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-    except Exception as e:
-        logging.exception(f"Error in handle_final_confirmation_choice: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
+    confirmation_question.handle_final_confirmation_choice(
+        _ctx(), call, _confirmation_callbacks()
+    )
 
 
 def ask_which_responses_to_modify(chat_id, user_id, language):
-    try:
-        # Fixed order of fields as used in get_responses_text (without
-        # frequency_change)
-        field_order = [
-            'location',
-            'purpose_visit',
-            'enjoyment',
-            'visitor_type',
-            'duration_visit',
-            'accessibility',
-            'regularity',
-            'noticed_changes',
-            'changes_detail',
-            'wishlist',
-            'kremenchuk',
-            'description',
-            'age',
-            'gender',
-            'occupation',
-            'income'
-        ]
-
-        label_mapping = messages[language]['labels']
-
-        # Combine _user_data() and _user_profiles() for existing fields
-        combined_data = {
-            **_user_profiles().get(user_id, {}), **_user_data()[user_id]}
-
-        # We do not exclude description now so that it will always appear
-        # If you still do not want to modify location, keep this. Otherwise
-        # remove.
-        fields_to_exclude = ['location']
-
-        field_mapping = {}
-
-        for field in field_order:
-            if field not in fields_to_exclude:
-                # Even if description was skipped, it should appear for modification
-                # Check if the field is meaningful: it either exists or we always want it accessible
-                # For fields that always appear (like description), we include
-                # them regardless of presence.
-                if field == 'description':
-                    field_mapping[field] = label_mapping.get(
-                        field, 'Description' if language == 'en' else 'Опис')
-                else:
-                    if field in combined_data or field in _user_data()[user_id]:
-                        field_mapping[field] = label_mapping.get(
-                            field, field.capitalize())
-                    else:
-                        # For conditional fields: if they do not exist at all, they might not be modifiable
-                        # But in this case, we want them if at least once visited
-                        # If you want all fields shown even if empty, you can
-                        # remove this check
-                        if field in label_mapping:
-                            field_mapping[field] = label_mapping[field]
-
-        _user_data()[user_id]['field_mapping'] = field_mapping
-
-        # Log which fields are offered for modification with anonymized ID
-        anon_id = get_anonymous_id(user_id)
-        flow_logger.info(
-            f"User {anon_id}: Offered these fields for modification: {list(field_mapping.keys())}")
-
-        # Track dependency chain fields being offered
-        dependency_fields = ['regularity', 'noticed_changes', 'changes_detail']
-        offered_dependencies = [
-            f for f in dependency_fields if f in field_mapping]
-        if offered_dependencies:
-            dependency_values = {
-                f: _user_data()[user_id].get(
-                    f, 'not set') for f in offered_dependencies}
-            flow_logger.info(
-                f"User {anon_id}: Current dependency chain values: {dependency_values}")
-
-        # Create inline keyboard with options
-        inline_kb = types.InlineKeyboardMarkup(row_width=1)
-        buttons = [
-            types.InlineKeyboardButton(text=label, callback_data=f"modify_{field}")
-            for field, label in field_mapping.items()
-        ]
-        done_button = types.InlineKeyboardButton(
-            text=messages[language]['done_button'],
-            callback_data="modification_done")
-        inline_kb.add(*buttons)
-        inline_kb.add(done_button)
-
-        bot.send_message(
-            chat_id,
-            messages[language]['select_questions_to_modify'],
-            reply_markup=inline_kb
-        )
-
-    except Exception as e:
-        logging.exception(f"Error in ask_which_responses_to_modify: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    confirmation_question.ask_which_responses_to_modify(
+        _ctx(), chat_id, user_id, language, _confirmation_callbacks()
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(
@@ -1960,420 +1078,55 @@ def handle_modification_selection_callback(call):
 
 
 def handle_modification_selection(call):
-    """
-    Handles user selection of which question to modify.
-    This is the entry point for the modification flow.
-    """
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        update_activity_timestamp(user_id)
-
-        language = _user_data()[user_id]['language']
-        anon_id = get_anonymous_id(user_id)
-
-        if call.data == 'modification_done':
-            # User finished selecting fields to modify
-            flow_logger.info(
-                f"User {anon_id}: Completed modifications, returning to final confirmation")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-            ask_final_confirmation(chat_id, user_id, language)
-        else:
-            # User selected a specific field to modify
-            field = callback_suffix(call.data, "modify")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Set modifying state
-            _user_data()[user_id]['modifying'] = True
-            _user_data()[user_id]['modifying_field'] = field
-
-            # Log the field being modified
-            flow_logger.info(f"User {anon_id}: Modifying field: {field}")
-
-            # Define field relationships for documentation
-            field_dependencies = get_question_dependencies()
-
-            # Log if modifying a field with dependencies
-            if field in field_dependencies:
-                dependent_fields = field_dependencies[field]
-                # Log current values of the field and its dependents
-                current_values = {
-                    f: _user_data()[user_id].get(
-                        f,
-                        'not set') for f in [field] +
-                    dependent_fields if f in _user_data()[user_id]}
-                flow_logger.info(
-                    f"User {anon_id}: Field {field} has dependencies: {dependent_fields}. Current values: {current_values}")
-
-            # Redirect to the appropriate question handler based on field
-            if field == 'enjoyment':
-                ask_enjoyment(chat_id, user_id, language)
-            elif field == 'purpose_visit':
-                ask_purpose_visit(chat_id, user_id, language)
-            elif field == 'regularity':
-                ask_regularity(chat_id, user_id, language)
-            elif field == 'accessibility':
-                ask_accessibility(chat_id, user_id, language)
-            elif field == 'noticed_changes':
-                ask_noticed_changes(chat_id, user_id, language)
-            elif field == 'changes_detail':
-                ask_changes_detail(chat_id, user_id, language)
-            elif field == 'wishlist':
-                ask_wishlist(chat_id, user_id, language)
-            elif field == 'kremenchuk':
-                ask_kremenchuk(chat_id, user_id, language)
-            elif field == 'age':
-                ask_age(chat_id, user_id, language)
-            elif field == 'gender':
-                ask_gender(chat_id, user_id, language)
-            elif field == 'occupation':
-                ask_occupation(chat_id, user_id, language)
-            elif field == 'income':
-                ask_income(chat_id, user_id, language)
-            elif field == 'description':
-                ask_description(chat_id, user_id, language)
-            elif field == 'visitor_type':
-                ask_visitor_type(chat_id, user_id, language)
-            elif field == 'duration_visit':
-                ask_duration(chat_id, user_id, language)
-            else:
-                bot.send_message(
-                    chat_id, messages[language].get(
-                        'invalid_selection', "Invalid selection."))
-                flow_logger.warning(
-                    f"User {anon_id}: Attempted to modify invalid field: {field}")
-    except Exception as e:
-        logging.exception(f"Error in handle_modification_selection: {e}")
-        bot.send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred. Please try again later."))
-
-# Helper functions for anonymization and dependency management
-
-
-def get_anonymous_id(user_id):
-    """
-    Get an anonymized identifier for a user.
-    Uses nickname exclusively for anonymization.
-
-    Args:
-        user_id (int): The user's Telegram ID
-
-    Returns:
-        str: Anonymized nickname for logging
-    """
-    # Always use the nickname if available in _user_data()
-    if user_id in _user_data() and 'nickname' in _user_data()[user_id]:
-        return _user_data()[user_id]['nickname']
-
-    # If not in _user_data(), check if we can retrieve it from the database
-    user_hash = get_user_hash(user_id)
-    nickname = get_user_nickname(user_hash)
-
-    if nickname:
-        # Store it in _user_data() for future use
-        if user_id not in _user_data():
-            _user_data()[user_id] = {}
-        _user_data()[user_id]['nickname'] = nickname
-        return nickname
-
-    # If no nickname exists yet, generate one, save it, and return it
-    nickname = generate_unique_nickname()
-    save_user_nickname(user_hash, nickname)
-    if user_id not in _user_data():
-        _user_data()[user_id] = {}
-    _user_data()[user_id]['nickname'] = nickname
-    return nickname
+    confirmation_question.handle_modification_selection(
+        _ctx(), call, _confirmation_callbacks()
+    )
 
 
 def get_question_dependencies():
-    """
-    Returns a dictionary mapping questions to their dependent questions.
-    This makes the dependency relationships explicit and centralized.
-
-    Returns:
-        dict: Mapping of questions to lists of dependent questions
-    """
-    return {
-        'regularity': ['noticed_changes', 'changes_detail'],
-        'noticed_changes': ['changes_detail'],
-    }
+    return confirmation_question.get_question_dependencies()
 
 
 def requires_follow_up(regularity_response):
-    """
-    Determines if a regularity response requires noticed_changes follow-up question.
-
-    Args:
-        regularity_response (str): The user's response to regularity question
-
-    Returns:
-        bool: True if follow-up questions are needed, False otherwise
-    """
-    if not regularity_response:
-        return False
-
-    # Skip options don't require follow-up
-    skip_options_en = [
-        "One-time visit",
-        "Visited before 2022 but not anymore",
-        "Prefer not to disclose"
-    ]
-    skip_options_uk = [
-        "Разове відвідування",
-        "Відвідував(-ла) до 2022 р., але не зараз",
-        "Надаю перевагу не вказувати"
-    ]
-
-    # Check if regularity exactly matches any skip options
-    for option in skip_options_en + skip_options_uk:
-        if option in regularity_response:
-            return False
-
-    # If no skip patterns found, follow-up is required
-    return True
+    return confirmation_question.requires_follow_up(regularity_response)
 
 
 def skips_changes_questions(frequency_response):
-    """
-    Determines if a frequency change response should skip the noticed changes question.
-
-    Args:
-        frequency_response (str): The user's response to frequency change question
-
-    Returns:
-        bool: True if noticed_changes should be skipped, False otherwise
-    """
-    if not frequency_response:
-        return False
-
-    # Didn't visit before invasion responses skip the noticed changes question
-    en_skip = ["I didn't visit this place before the invasion"]
-    uk_skip = ["Не відвідував(ла) це місце до вторгнення"]
-
-    return (frequency_response in en_skip) or (frequency_response in uk_skip)
+    return confirmation_question.skips_changes_questions(frequency_response)
 
 
 def requires_changes_detail(changes_response):
-    """
-    Determines if a noticed changes response requires detail follow-up.
-
-    Args:
-        changes_response (str): The user's response to noticed changes question
-
-    Returns:
-        bool: True if detail questions are needed, False otherwise
-    """
-    if not changes_response:
-        return False
-
-    # Positive or negative changes require details
-    en_requires = ["Yes, positive changes", "Yes, negative changes"]
-    uk_requires = ["Так, позитивні зміни", "Так, негативні зміни"]
-
-    return (
-        changes_response in en_requires) or (
-        changes_response in uk_requires)
+    return confirmation_question.requires_changes_detail(changes_response)
 
 
 def clear_dependent_fields(user_id, field, old_value, new_value):
-    """
-    Clears fields that depend on a changed answer when appropriate.
-    Only clears dependent fields if the change would invalidate them.
-    """
-    dependencies = get_question_dependencies()
-    cleared_fields = []
-    anon_id = get_anonymous_id(user_id)
-
-    # Only process for fields that have dependencies
-    if field not in dependencies:
-        return cleared_fields
-
-    # Store values before clearing for logging
-    fields_to_check = dependencies[field]
-    current_values = {f: _user_data()[user_id].get(
-        f, 'not set') for f in fields_to_check if f in _user_data()[user_id]}
-
-    # Handle regularity changes
-    if field == 'regularity':
-        # Define patterns that should clear follow-up questions
-        should_clear_patterns = [
-            "One-time visit",
-            "Разове відвідування",
-            "Visited before 2022 but not anymore",
-            "Відвідував(-ла) до 2022 р., але не зараз",
-            "Prefer not to disclose",
-            "Надаю перевагу не вказувати"]
-
-        # Check if the new value is one that should clear dependencies
-        should_clear = any(
-            pattern in new_value for pattern in should_clear_patterns)
-
-        # If new value should clear dependencies, proceed regardless of old
-        # value
-        if should_clear:
-            flow_logger.info(
-                f"User {anon_id}: Clearing dependent fields because regularity changed to '{new_value}'")
-            for dep_field in dependencies[field]:
-                if dep_field in _user_data()[user_id]:
-                    _user_data()[user_id].pop(dep_field, None)
-                    cleared_fields.append(dep_field)
-
-                    # If changes_detail is cleared, also clear custom_changes
-                    # if present
-                    if dep_field == 'changes_detail' and 'custom_changes' in _user_data()[user_id]:
-                        _user_data()[user_id].pop('custom_changes', None)
-                        cleared_fields.append('custom_changes')
-
-    # Handle noticed_changes changes
-    elif field == 'noticed_changes':
-        # Define patterns that require detailed changes
-        requires_detail_patterns = [
-            "Yes, positive changes", "Yes, negative changes",
-            "Так, позитивні зміни", "Так, негативні зміни"
-        ]
-
-        # Check if old value required details but new value doesn't
-        old_requires_detail = any(
-            pattern in old_value for pattern in requires_detail_patterns)
-        new_requires_detail = any(
-            pattern in new_value for pattern in requires_detail_patterns)
-
-        # Clear details if no longer requiring them
-        if old_requires_detail and not new_requires_detail:
-            if 'changes_detail' in _user_data()[user_id]:
-                _user_data()[user_id].pop('changes_detail', None)
-                cleared_fields.append('changes_detail')
-
-                # Also clear custom_changes if present
-                if 'custom_changes' in _user_data()[user_id]:
-                    _user_data()[user_id].pop('custom_changes', None)
-                    cleared_fields.append('custom_changes')
-
-    # Only log what was cleared with values if something was actually cleared
-    if cleared_fields:
-        # Only log when in modification mode or fields are actually cleared
-        flow_logger.info(
-            f"User {anon_id}: Fields cleared due to modification: {field} changed from '{old_value}' to '{new_value}'")
-        flow_logger.info(
-            f"User {anon_id}: Cleared fields: {cleared_fields} with previous values: {current_values}")
-
-    return cleared_fields
+    return confirmation_question.clear_dependent_fields(
+        _ctx(), user_id, field, old_value, new_value, get_anonymous_id
+    )
 
 
 # Continue or stop handlers
+def _restart_callbacks():
+    return RestartCallbacks(
+        location_handler=handle_location_step,
+        send_welcome=send_welcome,
+        get_user_hash=get_user_hash,
+        get_user_nickname=get_user_nickname,
+        generate_unique_nickname=generate_unique_nickname,
+        save_user_nickname=save_user_nickname,
+        clear_message_ids=clear_message_ids,
+    )
+
+
 def ask_continue_or_stop(chat_id, user_id, language):
-    try:
-        options = messages[language]['continue_options']
-        inline_kb = types.InlineKeyboardMarkup(row_width=2)
-        buttons = [
-            types.InlineKeyboardButton(text=option, callback_data=f"continue_{idx}")
-            for idx, option in enumerate(options)
-        ]
-        inline_kb.add(*buttons)
-
-        nickname = _user_data()[user_id]['nickname']
-
-        # Make the thank you message more prominent
-        thank_you_msg = f"<b>{messages[language]['thank_you']}</b>"
-        bot.send_message(chat_id, thank_you_msg, parse_mode='HTML')
-
-        # Add a small delay for better UX flow
-        time.sleep(0.8)
-
-        # Then ask if they want to continue
-        continue_msg = messages[language]['continue_question'].format(
-            nickname=f'<b>{escape_html(nickname)}</b>')
-        bot.send_message(
-            chat_id,
-            continue_msg,
-            reply_markup=inline_kb,
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        logging.exception(f"Error in ask_continue_or_stop: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    restart_question.ask_continue_or_stop(_ctx(), chat_id, user_id, language)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('continue_'))
 def handle_continue_or_stop_selection(call):
-    try:
-        chat_id = call.message.chat.id
-        user_id = call.from_user.id
-        update_activity_timestamp(user_id)
-
-        # Ensure the user has selected a language
-        if user_id not in _user_data() or 'language' not in _user_data()[user_id]:
-            if user_id in _user_profiles() and 'language' in _user_profiles()[user_id]:
-                _user_data()[user_id] = {
-                    'language': _user_profiles()[user_id]['language']}
-            else:
-                bot.send_message(
-                    chat_id,
-                    "Please use /start to begin.\nБудь ласка, використайте /start для початку.")
-                return
-
-        language = _user_data()[user_id]['language']
-        options = messages[language]['continue_options']
-        data = callback_suffix(call.data, "continue")
-
-        if data == '0':  # Continue
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {options[0]}")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-            save_data_and_restart(
-                chat_id, user_id, language, restart_survey=False)
-
-            send_next_step_prompt(
-                chat_id,
-                messages[language]['send_location'],
-                handle_location_step)
-
-        elif data == '1':  # Stop
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, f"{messages[language]['selected']} {options[1]}")
-            bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=None)
-
-            # Create InlineKeyboard with 'Restart' button
-            inline_kb = types.InlineKeyboardMarkup()
-            restart_button = types.InlineKeyboardButton(
-                text=messages[language]['restart_button'], callback_data='restart')
-            inline_kb.add(restart_button)
-
-            # Send 'consent_denied' message with 'Restart' button
-            bot.send_message(
-                chat_id,
-                messages[language]['consent_denied'],
-                reply_markup=inline_kb,
-                parse_mode='HTML'  # Assuming you want to parse HTML here
-            )
-
-            save_data_and_restart(
-                chat_id, user_id, language, restart_survey=False)
-        else:
-            # Replace direct call with safe_answer_callback
-            safe_answer_callback(
-                call, messages[language].get(
-                    'invalid_selection', "Invalid selection."))
-    except Exception as e:
-        logging.exception(f"Error in handle_continue_or_stop_selection: {e}")
-        bot.send_message(chat_id, "An error occurred. Please try again later.")
+    restart_question.handle_continue_or_stop_selection(
+        _ctx(), call, _restart_callbacks()
+    )
 
 
 @bot.message_handler(func=lambda m: True, content_types=['text'])
@@ -2513,91 +1266,15 @@ def handle_text_messages(m):
 
 
 # Data saving
-
-# Updated save_data_and_restart function with better error handling for concurrent use
 def save_data_and_restart(chat_id, user_id, language, restart_survey=False):
-    try:
-        ctx = _ctx()
-        user_profile_copy = ctx.sessions.profile_snapshot(user_id)
-        user_consent = user_profile_copy.get('consent', False)
-
-        if not user_consent:
-            flow_logger.info("Consent denied; skipping response row insert")
-            clear_message_ids(user_id)
-            if restart_survey:
-                send_welcome(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    start_param='restart')
-            return True
-
-        def nickname_provider():
-            user_hash = get_user_hash(user_id)
-            nickname = get_user_nickname(user_hash)
-            if not nickname:
-                nickname = generate_unique_nickname()
-                save_user_nickname(user_hash, nickname)
-            return nickname
-
-        try:
-            save_response(
-                ctx,
-                user_id,
-                language,
-                nickname_provider=nickname_provider,
-            )
-        except EncryptionUnavailableError:
-            flow_logger.error("Encryption not initialized. Cannot save data securely.")
-            safe_send_message(
-                chat_id,
-                "A security error occurred. Your data could not be saved securely. Please contact support." 
-                if language == 'en' else 
-                "Сталася помилка безпеки. Ваші дані не могли бути збережені надійно. Зверніться до служби підтримки."
-            )
-            return False
-        except DatabaseSaveError:
-            safe_send_message(
-                chat_id,
-                "A database error occurred. Your data could not be saved. Please try again later."
-                if language == 'en' else
-                "Сталася помилка бази даних. Ваші дані не могли бути збережені. Будь ласка, спробуйте пізніше."
-            )
-            return False
-
-        # Clear current experience data using thread-safe method
-        with _session_lock():
-            if user_id in _user_data():
-                experience_keys = [
-                    'location', 'enjoyment', 'purpose_visit', 'regularity',
-                    'noticed_changes', 'changes_detail', 'wishlist', 'kremenchuk',
-                    'description', 'voice_submitted', 'visitor_type', 'duration_visit',
-                    'accessibility', 'description_done'  # Added description_done to the list
-                ]
-                for key in experience_keys:
-                    _user_data()[user_id].pop(key, None)
-
-        # Clear tracked message IDs
-        clear_message_ids(user_id)
-
-        if restart_survey:
-            send_welcome(
-                chat_id=chat_id,
-                user_id=user_id,
-                start_param='restart')
-            
-        return True
-
-    except Exception as e:
-        error_msg = f"Error in save_data_and_restart: {e}"
-        logging.exception(error_msg)
-        flow_logger.error(error_msg)
-        safe_send_message(
-            chat_id,
-            messages[language].get(
-                'error_occurred',
-                "An error occurred while saving your data. Please try again later.")
-        )
-        return False
+    return restart_question.save_data_and_restart(
+        _ctx(),
+        chat_id,
+        user_id,
+        language,
+        restart_survey,
+        _restart_callbacks(),
+    )
 
 if __name__ == '__main__':
     run()
