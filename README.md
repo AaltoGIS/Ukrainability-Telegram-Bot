@@ -175,7 +175,9 @@ start cleanup threads. Runtime effects live behind `configure_runtime()`,
 3. Update the option list or keyboard layout in the question module's `ask_*`
    function.
 4. If the option set affects branching, update the matching predicates or index
-   sets in `survey/flow.py`.
+   sets in `survey/flow.py`. Branching predicates match literal answer strings
+   in both `en` and `uk`, so update both language variants together when option
+   wording changes.
 5. Run the focused test, for example:
 
    ```bash
