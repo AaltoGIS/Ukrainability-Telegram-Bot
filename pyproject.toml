@@ -32,7 +32,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "build",
+    "coverage",
     "pytest",
+    "pytest-cov",
     "ruff==0.6.9",
     "twine",
 ]
@@ -50,6 +52,19 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+source = ["src/ukrainability_telegram_bot"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
 
 [tool.ruff]
 line-length = 100

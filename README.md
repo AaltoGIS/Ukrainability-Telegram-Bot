@@ -1,5 +1,7 @@
 # Ukrainability Telegram Bot
 
+[![codecov](https://codecov.io/gh/HTenkanen/UkrainabilityTelegramBot/branch/main/graph/badge.svg)](https://codecov.io/gh/HTenkanen/UkrainabilityTelegramBot)
+
 <!-- TODO: add citation to the accompanying article once confirmed -->
 The Ukrainability Telegram Bot turns Telegram, a messenger already used daily by
 many people, into a low-cost, anonymous public participatory GIS (PPGIS) tool
