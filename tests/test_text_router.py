@@ -44,3 +44,23 @@ def test_text_router_reprompts_single_select_question(app_context):
         messages["en"]["single_select_prompt"],
     )
     actions.ask_duration.assert_called_once_with(456, user_id, "en")
+
+
+def test_text_router_start_prompt_uses_message_key_and_safe_send(monkeypatch, app_context):
+    sent = []
+
+    def safe_send_message(ctx, chat_id, text, **kwargs):
+        sent.append((ctx, chat_id, text, kwargs))
+
+    monkeypatch.setattr(text_router, "safe_send_message", safe_send_message)
+
+    text_router.handle_text_messages(app_context, _message())
+
+    assert sent == [
+        (
+            app_context,
+            456,
+            messages["en"]["please_use_start"],
+            {},
+        )
+    ]

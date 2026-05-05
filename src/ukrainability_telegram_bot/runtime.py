@@ -7,7 +7,6 @@ import sys
 import time
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
-from typing import Any
 
 import requests
 import telebot
@@ -16,6 +15,7 @@ from telebot.apihelper import ApiTelegramException
 from .app import AppContext
 from .cleanup import cleanup_old_voice_messages, cleanup_stop_event, start_cleanup_scheduler
 from .config import AppConfig
+from .handlers import register_handlers
 from .security import build_fernet
 from .sessions import SessionStore
 from . import startup
@@ -24,20 +24,6 @@ from .telegram_io import telegram_retry_after
 
 flow_logger = logging.getLogger('flow_control')
 flow_logger.setLevel(logging.INFO)
-
-
-def _load_legacy_handlers() -> Any:
-    """Import legacy survey helpers."""
-
-    from . import _legacy
-
-    return _legacy
-
-
-def register_handlers(ctx: AppContext) -> None:
-    """Register Telegram handlers against the configured bot."""
-
-    _load_legacy_handlers().register_handlers(ctx)
 
 
 def _configure_logging(config: AppConfig) -> None:

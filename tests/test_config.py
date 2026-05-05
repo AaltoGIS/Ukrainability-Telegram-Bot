@@ -31,7 +31,7 @@ def test_config_loads_from_environment(tmp_path):
     assert config.cleanup_interval_seconds == 300
 
 
-def test_config_loads_legacy_credentials_file(tmp_path):
+def test_config_loads_exported_credentials_file(tmp_path):
     credentials = tmp_path / "credentials"
     credentials.write_text(
         'export TELEGRAM_BOT_TOKEN="legacy-token"\n'

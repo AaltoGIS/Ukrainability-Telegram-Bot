@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from ukrainability_telegram_bot import _legacy as bot
 from ukrainability_telegram_bot import telegram_io
 from ukrainability_telegram_bot.survey.actions import SurveyActions
 from ukrainability_telegram_bot.survey.questions import restart as restart_question
@@ -12,62 +11,23 @@ from ukrainability_telegram_bot.survey.questions import restart as restart_quest
 def test_telegram_retry_after_coerces_string_and_caps():
     error = SimpleNamespace(result_json={"parameters": {"retry_after": "120"}})
 
-    assert bot.telegram_retry_after(error) == 60.0
+    assert telegram_io.telegram_retry_after(error) == 60.0
 
 
 def test_telegram_retry_after_falls_back_for_bad_values():
     error = SimpleNamespace(result_json={"parameters": {"retry_after": "later"}})
 
-    assert bot.telegram_retry_after(error, default=7) == 7.0
+    assert telegram_io.telegram_retry_after(error, default=7) == 7.0
 
 
 def test_callback_index_validates_prefix_and_bounds():
     options = ["yes", "no"]
 
-    assert bot.callback_index("consent_1", "consent", options) == 1
+    assert telegram_io.callback_index("consent_1", "consent", options) == 1
     with pytest.raises(ValueError):
-        bot.callback_index("purpose_1", "consent", options)
+        telegram_io.callback_index("purpose_1", "consent", options)
     with pytest.raises(IndexError):
-        bot.callback_index("consent_2", "consent", options)
-
-
-def test_legacy_bridge_does_not_expose_session_store_wrappers(app_context):
-    bridge = bot.create_legacy_bridge(app_context)
-
-    for name in (
-        "get_user_data",
-        "set_user_data",
-        "remove_user_data",
-        "get_user_profile",
-        "set_user_profile",
-    ):
-        assert not hasattr(bridge, name)
-
-
-def test_legacy_bridge_does_not_expose_callback_builders(app_context):
-    bridge = bot.create_legacy_bridge(app_context)
-
-    assert not [
-        name
-        for name in dir(bridge)
-        if name.startswith("_") and name.endswith("_callbacks")
-    ]
-
-
-def test_legacy_bridge_surface_is_limited(app_context):
-    bridge = bot.create_legacy_bridge(app_context)
-
-    public_names = {
-        name
-        for name in dir(bridge)
-        if not name.startswith("_")
-    }
-    assert public_names == {
-        "clear_callback_state",
-        "ctx",
-        "ensure_session_valid",
-        "register_handlers",
-    }
+        telegram_io.callback_index("consent_2", "consent", options)
 
 
 def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp_path, app_context):
@@ -96,10 +56,9 @@ def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp
             app_context.sessions.profiles.pop(user_id, None)
 
 
-def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_context):
+def test_handle_callback_error_clears_transient_state(monkeypatch, app_context):
     user_id = 123
     chat_id = 456
-    bridge = bot.create_legacy_bridge(app_context)
     app_context.sessions.data[user_id] = {
         "language": "en",
         "awaiting_multiple_select": "visitor_type",
@@ -120,7 +79,10 @@ def test_handle_callback_error_clears_legacy_transient_state(monkeypatch, app_co
         call,
         RuntimeError("boom"),
         "handle_purpose_selection",
-        clear_callback_state=bridge.clear_callback_state,
+        clear_callback_state=lambda user_id: telegram_io.clear_callback_state(
+            app_context,
+            user_id,
+        ),
     )
 
     session = app_context.sessions.data[user_id]

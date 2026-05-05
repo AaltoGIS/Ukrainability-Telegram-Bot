@@ -6,6 +6,7 @@ from typing import Any
 
 from ..app import AppContext
 from ..messages import messages
+from ..telegram_io import safe_send_message
 from .actions import SurveyActions
 
 
@@ -57,10 +58,10 @@ def _ensure_language(ctx: AppContext, chat_id: int, user_id: int) -> str | None:
         ctx.sessions.set_data(user_id, "language", profile_language)
         return profile_language
 
-    ctx.bot.send_message(
+    safe_send_message(
+        ctx,
         chat_id,
-        "Please use /start to begin a new survey.\n"
-        "Будь ласка, використайте /start для початку нового опитування.",
+        messages["en"]["please_use_start"],
     )
     return None
 

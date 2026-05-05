@@ -35,13 +35,13 @@ def test_nickname_persistence_returns_latest_month(app_context):
     }
 
 
-def test_generate_unique_nickname_preserves_legacy_format(app_context):
+def test_generate_unique_nickname_preserves_classic_format(app_context):
     nickname = nickname_db.generate_unique_nickname(app_context, rng=FixedRandom())
 
     assert nickname == "Agile Antelope 0"
 
 
-def test_generate_unique_nickname_avoids_existing_legacy_value(app_context):
+def test_generate_unique_nickname_avoids_existing_classic_value(app_context):
     nickname_db.save_user_nickname(
         app_context, "user-hash", "Agile Antelope 0", month_year="2026-05"
     )
