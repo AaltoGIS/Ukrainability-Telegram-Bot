@@ -11,14 +11,18 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable
+from typing import Protocol
+
+
+class CleanupStaleSessions(Protocol):
+    def __call__(self, *, hours_inactive: int) -> None: ...
 
 
 _voice_files_dir: str | None = None
 _voice_retention_days = 30
 _cleanup_interval_seconds = 24 * 60 * 60
 _flow_logger: logging.Logger | None = None
-_cleanup_stale_sessions: Callable[[int], None] | None = None
+_cleanup_stale_sessions: CleanupStaleSessions | None = None
 
 cleanup_stop_event = threading.Event()
 cleanup_thread_lock = threading.Lock()
@@ -31,7 +35,7 @@ def bind(
     voice_retention_days: int,
     cleanup_interval_seconds: int,
     flow_logger: logging.Logger,
-    cleanup_stale_sessions: Callable[[int], None],
+    cleanup_stale_sessions: CleanupStaleSessions,
 ) -> None:
     """Bind temporary legacy dependencies until AppContext replaces them."""
 
@@ -48,7 +52,7 @@ def bind(
     _cleanup_stale_sessions = cleanup_stale_sessions
 
 
-def _require_bound() -> tuple[str, logging.Logger, Callable[[int], None]]:
+def _require_bound() -> tuple[str, logging.Logger, CleanupStaleSessions]:
     if (
         _voice_files_dir is None
         or _flow_logger is None
@@ -100,21 +104,23 @@ def cleanup_scheduler() -> None:
     """Periodically runs cleanup tasks in the background."""
 
     _, flow_logger, cleanup_stale_sessions = _require_bound()
+    voice_retention_days = _voice_retention_days
+    cleanup_interval_seconds = _cleanup_interval_seconds
 
     def run_cleanup_pass() -> None:
         cleanup_stale_sessions(hours_inactive=48)
-        cleanup_old_voice_messages(days_to_keep=_voice_retention_days)
+        cleanup_old_voice_messages(days_to_keep=voice_retention_days)
 
     while not cleanup_stop_event.is_set():
         try:
             run_cleanup_pass()
         except Exception as e:
             flow_logger.exception(f"Error in cleanup scheduler: {e}")
-            if cleanup_stop_event.wait(min(_cleanup_interval_seconds, 60 * 60)):
+            if cleanup_stop_event.wait(min(cleanup_interval_seconds, 60 * 60)):
                 break
             continue
 
-        if cleanup_stop_event.wait(_cleanup_interval_seconds):
+        if cleanup_stop_event.wait(cleanup_interval_seconds):
             break
 
 

@@ -22,6 +22,9 @@ def test_cleanup_scheduler_runs_once_at_startup_then_waits(monkeypatch, tmp_path
 
     def cleanup_sessions(hours_inactive):
         calls.append("sessions")
+
+    def cleanup_voice(days_to_keep):
+        calls.append("voice")
         first_pass.set()
 
     cleanup.bind(
@@ -34,7 +37,7 @@ def test_cleanup_scheduler_runs_once_at_startup_then_waits(monkeypatch, tmp_path
     monkeypatch.setattr(
         cleanup,
         "cleanup_old_voice_messages",
-        lambda days_to_keep: calls.append("voice"),
+        cleanup_voice,
     )
 
     cleanup.cleanup_stop_event.clear()
