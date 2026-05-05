@@ -43,8 +43,8 @@ dev = [
 ukrainability-bot = "ukrainability_telegram_bot.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/HTenkanen/UkrainabilityTelegramBot"
-Repository = "https://github.com/HTenkanen/UkrainabilityTelegramBot"
+Homepage = "https://github.com/AaltoGIS/Ukrainability-Telegram-Bot"
+Repository = "https://github.com/AaltoGIS/Ukrainability-Telegram-Bot"
 
 [tool.setuptools.packages.find]
 where = ["src"]

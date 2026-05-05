@@ -1,6 +1,6 @@
 # Ukrainability Telegram Bot
 
-[![codecov](https://codecov.io/gh/HTenkanen/UkrainabilityTelegramBot/branch/main/graph/badge.svg)](https://codecov.io/gh/HTenkanen/UkrainabilityTelegramBot)
+[![codecov](https://codecov.io/gh/AaltoGIS/Ukrainability-Telegram-Bot/branch/main/graph/badge.svg)](https://codecov.io/gh/AaltoGIS/Ukrainability-Telegram-Bot)
 
 <!-- TODO: add citation to the accompanying article once confirmed -->
 The Ukrainability Telegram Bot turns Telegram, a messenger already used daily by
