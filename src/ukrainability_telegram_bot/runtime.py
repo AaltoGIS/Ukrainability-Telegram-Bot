@@ -1,9 +1,4 @@
-"""Runtime setup, polling, and handler registry.
-
-Phase 2 refactor note: this module owns `AppContext` construction while the
-legacy survey handlers still register at import time. Phase 5 removes
-`HandlerRegistry` and the temporary active-context bridge.
-"""
+"""Runtime setup, handler registration, and polling."""
 
 from __future__ import annotations
 
@@ -27,49 +22,6 @@ from .sessions import SessionStore
 from .telegram_io import telegram_retry_after
 
 
-class HandlerRegistry:
-    """Collect handler decorators until a real TeleBot is configured.
-
-    `bind()` replays the collected decorators onto the real TeleBot and keeps
-    this registry object alive as a proxy. This lets legacy handler code keep
-    calling `bot.send_message(...)` through `__getattr__` until Phase 5 removes
-    import-time registration.
-    """
-
-    def __init__(self):
-        self._handlers = []
-        self._real_bot = None
-
-    def bind(self, real_bot):
-        self._real_bot = real_bot
-        for handler_name, args, kwargs, handler_func in self._handlers:
-            decorator = getattr(real_bot, handler_name)(*args, **kwargs)
-            decorator(handler_func)
-        return self
-
-    def __getattr__(self, name):
-        """Fall through to the bound TeleBot for legacy `bot.X(...)` calls."""
-
-        if self._real_bot is None:
-            raise AttributeError(name)
-        return getattr(self._real_bot, name)
-
-    def _register(self, handler_name, *args, **kwargs):
-        def decorator(handler_func):
-            self._handlers.append((handler_name, args, kwargs, handler_func))
-            if self._real_bot is not None:
-                getattr(self._real_bot, handler_name)(*args, **kwargs)(handler_func)
-            return handler_func
-
-        return decorator
-
-    def message_handler(self, *args, **kwargs):
-        return self._register("message_handler", *args, **kwargs)
-
-    def callback_query_handler(self, *args, **kwargs):
-        return self._register("callback_query_handler", *args, **kwargs)
-
-
 flow_logger = logging.getLogger('flow_control')
 flow_logger.setLevel(logging.INFO)
 
@@ -84,8 +36,7 @@ cleanup_interval_seconds = 24 * 60 * 60
 db_file = os.path.join(local_storage_dir, 'responses_kremenchuk.db')
 fernet = None
 
-# TODO(phase-5): remove with import-time registration.
-bot = HandlerRegistry()
+bot = None
 bot_username = None
 
 # TODO(phase-5): remove when handlers are registered against an explicit context.
@@ -93,13 +44,17 @@ _active_context: AppContext | None = None
 
 
 def _load_legacy_handlers() -> Any:
-    """Import legacy survey handlers so their temporary decorators are registered."""
+    """Import legacy survey helpers."""
 
-    # TODO(phase-5-final): remove this temporary import bridge once
-    # register_handlers(ctx) replaces HandlerRegistry.
     from . import _legacy
 
     return _legacy
+
+
+def register_handlers(ctx: AppContext) -> None:
+    """Register Telegram handlers against the configured bot."""
+
+    _load_legacy_handlers().register_handlers(ctx)
 
 
 def require_active_context() -> AppContext:
@@ -159,7 +114,6 @@ def configure_runtime(
     global _active_context
 
     _configure_logging(config)
-    _load_legacy_handlers()
     token = config.telegram_bot_token
     local_storage_dir = str(config.storage_dir)
     voice_files_dir = str(config.voice_files_dir)
@@ -174,10 +128,7 @@ def configure_runtime(
     fernet = build_fernet(config.encryption_key, list(config.retiring_encryption_keys))
 
     real_bot = telebot.TeleBot(token, threaded=True)
-    if isinstance(bot, HandlerRegistry):
-        bot.bind(real_bot)
-    else:
-        bot = real_bot
+    bot = real_bot
 
     bot_info = real_bot.get_me()
     bot_username = bot_info.username
@@ -190,6 +141,7 @@ def configure_runtime(
         bot_username=bot_username,
         cleanup_stop_event=cleanup_stop_event,
     )
+    register_handlers(_active_context)
     return _active_context
 
 
@@ -258,8 +210,8 @@ def run(
     if config is None:
         config = AppConfig.from_env()
     legacy_handlers = _load_legacy_handlers()
-    # TODO(phase-5-final): remove these fallbacks once register_handlers(ctx)
-    # replaces HandlerRegistry and startup tasks have dedicated runtime owners.
+    # Startup helpers still live in the temporary legacy bridge until their
+    # small runtime owners are extracted.
     if initialize_database is None:
         initialize_database = legacy_handlers.initialize_database
     if recover_user_sessions is None:

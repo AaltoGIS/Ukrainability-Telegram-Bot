@@ -16,7 +16,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 |---|---|
 | Single 6074-line script. | `src/ukrainability_telegram_bot/` package with `cli.py` entrypoint, `pyproject.toml`, installable as `ukrainability-bot`. |
 | Side effects at import time: created storage directories, opened the DB, called `bot.get_me()`, spawned the cleanup thread. | All side effects deferred to `configure_runtime(AppConfig)` / `run()`. Importing the package does nothing observable. |
-| Handlers registered at import via `@bot.message_handler(...)` against a real `TeleBot`. | `HandlerRegistry` records decorators at import; `configure_runtime` replays them against the real `TeleBot` once it's built. |
+| Handlers registered at import via `@bot.message_handler(...)` against a real `TeleBot`. | `runtime.register_handlers(ctx)` registers handlers against the configured `TeleBot`; importing modules does not attach handlers. |
 | Hard-coded `/home/ubuntu/kremenchuk` paths and inline credentials parsing. | `AppConfig.from_env()` dataclass with explicit fields; `UKRAINABILITY_STORAGE_DIR`, `UKRAINABILITY_CREDENTIALS_FILE`, `UKRAINABILITY_BOT_ERRORS_LOG`, `UKRAINABILITY_FLOW_CONTROL_LOG`, `UKRAINABILITY_LOG_MAX_BYTES`, `UKRAINABILITY_LOG_BACKUP_COUNT`, `UKRAINABILITY_VOICE_RETENTION_DAYS`, `UKRAINABILITY_CLEANUP_INTERVAL_SECONDS`. |
 | No tests. | Unit tests covering config, security, storage, pseudonym, voice helpers, nicknames, keyboards, messages, cleanup, Telegram I/O, question modules, and helper functions. |
 
@@ -60,7 +60,7 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 | Original | Current |
 |---|---|
-| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, `survey/persistence.py`, and `survey/questions/` modules for welcome, language, location, consent, purpose, description, enjoyment, visitor type, duration, accessibility, regularity, frequency change, noticed changes, changes detail, wishlist, Kremenchuk residency, demographics, final confirmation/modification, and post-submission restart/continue. The remaining temporary legacy survey flow lives in root `_legacy.py`; `bot.py` is a compatibility shim that re-exports `configure_runtime` and `run`. |
+| Survey text, adjective/noun pools, encryption helpers, DB helpers, callback parsing, message-id registry, cleanup scheduler, runtime setup, polling, session globals, and response persistence — all inline in the script. | Extracted into `messages.py`, `nicknames.py`, `security.py`, `storage.py`, `voice.py`, `pseudonym.py`, `keyboards.py`, `constants.py`, `cleanup.py`, `telegram_io.py`, `runtime.py`, `app.py`, `sessions.py`, `survey/flow.py`, `survey/persistence.py`, and `survey/questions/` modules for welcome, language, location, consent, purpose, description, enjoyment, visitor type, duration, accessibility, regularity, frequency change, noticed changes, changes detail, wishlist, Kremenchuk residency, demographics, final confirmation/modification, and post-submission restart/continue. The remaining temporary legacy module is a runtime-registration and helper bridge; `bot.py` is a compatibility shim that re-exports `configure_runtime` and `run`. |
 | Survey text duplicated between an inline `messages` dict and a module-level constant during the migration. | Single source: `messages.py`, imported by the survey flow modules. |
 
 ## What is intentionally unchanged
@@ -73,6 +73,6 @@ security, and correctness fixes — not user-visible behaviour changes.
 
 ## Open work (planned, not yet done)
 
-- Splitting the remaining `_legacy.py` responsibilities into per-question modules under `survey/questions/` and removing the temporary `HandlerRegistry`.
+- Reducing the remaining `_legacy.py` helper bridge further once runtime startup helpers and text-message custom-input handling have dedicated modules.
 - Broader survey-flow integration tests (drive a full callback chain through a mocked `TeleBot`).
 - HTML-output audit for any remaining unescaped user content in `parse_mode='HTML'` sends.
