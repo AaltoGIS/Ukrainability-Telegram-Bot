@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import time
 from collections.abc import Callable
@@ -16,7 +15,7 @@ from telebot.apihelper import ApiTelegramException
 
 from .app import AppContext
 from .cleanup import cleanup_old_voice_messages, cleanup_stop_event, start_cleanup_scheduler
-from .config import AppConfig, DEFAULT_STORAGE_DIR
+from .config import AppConfig
 from .security import build_fernet
 from .sessions import SessionStore
 from .telegram_io import telegram_retry_after
@@ -24,20 +23,6 @@ from .telegram_io import telegram_retry_after
 
 flow_logger = logging.getLogger('flow_control')
 flow_logger.setLevel(logging.INFO)
-
-# TODO(phase-5): remove these legacy scalar mirrors when bot.py no longer
-# depends on import-time module globals; AppContext is the canonical state.
-token = None
-local_storage_dir = DEFAULT_STORAGE_DIR
-voice_files_dir = os.path.join(local_storage_dir, 'voice_messages')
-user_hash_salt = None
-voice_retention_days = 30
-cleanup_interval_seconds = 24 * 60 * 60
-db_file = os.path.join(local_storage_dir, 'responses_kremenchuk.db')
-fernet = None
-
-bot = None
-bot_username = None
 
 
 def _load_legacy_handlers() -> Any:
@@ -92,68 +77,47 @@ def configure_runtime(
 ) -> AppContext:
     """Configure runtime dependencies for one bot process."""
 
-    global token
-    global local_storage_dir
-    global voice_files_dir
-    global db_file
-    global fernet
-    global bot
-    global bot_username
-    global user_hash_salt
-    global voice_retention_days
-    global cleanup_interval_seconds
-
     _configure_logging(config)
-    token = config.telegram_bot_token
-    local_storage_dir = str(config.storage_dir)
-    voice_files_dir = str(config.voice_files_dir)
-    db_file = str(config.db_file)
-    user_hash_salt = config.user_hash_salt
-    voice_retention_days = config.voice_retention_days
-    cleanup_interval_seconds = config.cleanup_interval_seconds
-
-    os.makedirs(local_storage_dir, exist_ok=True)
-    os.makedirs(voice_files_dir, exist_ok=True)
+    config.storage_dir.mkdir(parents=True, exist_ok=True)
+    config.voice_files_dir.mkdir(parents=True, exist_ok=True)
 
     fernet = build_fernet(config.encryption_key, list(config.retiring_encryption_keys))
 
-    real_bot = telebot.TeleBot(token, threaded=True)
-    bot = real_bot
+    real_bot = telebot.TeleBot(config.telegram_bot_token, threaded=True)
 
     bot_info = real_bot.get_me()
-    bot_username = bot_info.username
     ctx = AppContext(
         config=config,
         bot=real_bot,
         fernet=fernet,
         sessions=SessionStore(),
         flow_logger=flow_logger,
-        bot_username=bot_username,
+        bot_username=bot_info.username,
         cleanup_stop_event=cleanup_stop_event,
     )
     register_handlers(ctx)
     return ctx
 
 
-def check_telegram_connection() -> bool:
+def check_telegram_connection(ctx: AppContext) -> bool:
     """Check if the connection to Telegram API is active."""
 
     try:
-        bot.get_me()
+        ctx.bot.get_me()
         return True
     except Exception as e:
         flow_logger.error(f"Connection check failed: {e}")
         return False
 
 
-def start_polling_with_retry() -> bool:
+def start_polling_with_retry(ctx: AppContext) -> bool:
     max_retries = 10
     initial_delay = 5
     max_delay = 300
 
     for retry in range(max_retries):
         try:
-            bot.polling(non_stop=True, interval=1, timeout=60)
+            ctx.bot.polling(non_stop=True, interval=1, timeout=60)
             return True
         except requests.exceptions.ReadTimeout:
             delay = min(initial_delay * (2 ** retry), max_delay)
@@ -208,7 +172,7 @@ def run(
     if recover_user_sessions is None:
         recover_user_sessions = lambda: legacy_handlers.recover_user_sessions(ctx)
 
-    startup_message = f"Bot starting with username: {bot_username}"
+    startup_message = f"Bot starting with username: {ctx.bot_username}"
     print(startup_message)
     flow_logger.info(startup_message)
 
@@ -252,7 +216,7 @@ def run(
             flow_logger.info("Starting bot polling loop")
             start_time = time.time()
 
-            polling_successful = start_polling_with_retry()
+            polling_successful = start_polling_with_retry(ctx)
 
             if not polling_successful:
                 flow_logger.critical("All polling retries failed, entering recovery mode")
@@ -284,7 +248,7 @@ def run(
                 recovery_delay = 60
 
                 try:
-                    if check_telegram_connection():
+                    if check_telegram_connection(ctx):
                         flow_logger.info("Successfully reconnected to Telegram API")
                         consecutive_fast_failures = consecutive_fast_failures // 2
                 except Exception as conn_err:
