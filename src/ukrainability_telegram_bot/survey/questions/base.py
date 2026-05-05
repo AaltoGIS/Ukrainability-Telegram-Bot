@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from ...app import AppContext
 
@@ -12,11 +13,9 @@ class Question(Protocol):
     name: str
     callback_prefix: str
 
-    def ask(self, ctx: AppContext, chat_id: int, user_id: int, language: str) -> Any:
-        ...
+    def ask(self, ctx: AppContext, chat_id: int, user_id: int, language: str) -> Any: ...
 
-    def handle(self, ctx: AppContext, call: Any) -> Any:
-        ...
+    def handle(self, ctx: AppContext, call: Any) -> Any: ...
 
 
 QUESTIONS: dict[str, Question] = {}

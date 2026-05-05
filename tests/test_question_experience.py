@@ -59,7 +59,8 @@ def test_handle_visitor_done_with_selection_clears_state_and_continues(app_conte
     assert app_context.sessions.get_data(user_id, "awaiting_multiple_select") is None
     ask_duration.assert_called_once_with(456, user_id, "en")
     response_call = [
-        call for call in app_context.bot.send_message.call_args_list
+        call
+        for call in app_context.bot.send_message.call_args_list
         if call.kwargs.get("parse_mode") == "HTML"
     ][0]
     assert "Families; Students" in response_call.args[1]

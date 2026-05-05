@@ -173,9 +173,7 @@ def handle_description(
                 downloaded_file = _download_voice_with_retry(ctx, message)
                 encrypted_voice = ctx.fernet.encrypt(downloaded_file)
                 nickname = ctx.sessions.get_data(user_id, "nickname")
-                user_voice_dir = safe_nickname_directory(
-                    str(ctx.config.voice_files_dir), nickname
-                )
+                user_voice_dir = safe_nickname_directory(str(ctx.config.voice_files_dir), nickname)
                 os.makedirs(user_voice_dir, exist_ok=True)
                 filename = new_voice_filename(nickname)
                 voice_filename = user_voice_dir / filename
@@ -202,9 +200,7 @@ def handle_description(
                 return
         else:
             safe_send_message(ctx, chat_id, messages[language]["please_send_text_or_voice"])
-            ctx.bot.register_next_step_handler_by_chat_id(
-                chat_id, callbacks.description_handler
-            )
+            ctx.bot.register_next_step_handler_by_chat_id(chat_id, callbacks.description_handler)
             return
 
         ctx.sessions.set_data(user_id, "description", description)
@@ -247,12 +243,10 @@ def _download_voice_with_retry(ctx: AppContext, message: Any) -> bytes:
         except ApiTelegramException as exc:
             if getattr(exc, "error_code", None) == 429:
                 retry_after = telegram_retry_after(exc, default=3)
-                ctx.flow_logger.warning(
-                    f"Voice download error: {exc}, retrying in {retry_after}s"
-                )
+                ctx.flow_logger.warning(f"Voice download error: {exc}, retrying in {retry_after}s")
                 time.sleep(retry_after)
             elif attempt < 2:
-                retry_after = 2 ** attempt
+                retry_after = 2**attempt
                 ctx.flow_logger.warning(
                     f"Voice download API error: {exc}, retrying in {retry_after}s"
                 )

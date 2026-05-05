@@ -5,8 +5,9 @@ from __future__ import annotations
 import copy
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 
 class SessionStore:
@@ -31,7 +32,7 @@ class SessionStore:
         return self._profiles
 
     @contextmanager
-    def locked(self) -> Iterator["SessionStore"]:
+    def locked(self) -> Iterator[SessionStore]:
         with self._lock:
             yield self
 

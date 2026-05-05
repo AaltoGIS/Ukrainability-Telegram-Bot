@@ -23,7 +23,6 @@ from ..flow import (
     get_question_dependencies,
     requires_changes_detail,
     requires_follow_up,
-    skips_changes_questions,
 )
 from .base import register, resolve_actions
 
@@ -177,8 +176,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_purposes", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping['purpose_visit']}:</b> "
-                    f"{escape_html(purposes)}"
+                    f"<b>{label_mapping['purpose_visit']}:</b> " f"{escape_html(purposes)}"
                 )
             elif field == "visitor_type" and "visitor_type" in responses:
                 visitor_type = _join_with_custom(
@@ -186,8 +184,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_visitor_types", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping['visitor_type']}:</b> "
-                    f"{escape_html(visitor_type)}"
+                    f"<b>{label_mapping['visitor_type']}:</b> " f"{escape_html(visitor_type)}"
                 )
             elif field == "accessibility" and "accessibility" in responses:
                 accessibility = _join_with_custom(
@@ -195,8 +192,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_accessibility", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping['accessibility']}:</b> "
-                    f"{escape_html(accessibility)}"
+                    f"<b>{label_mapping['accessibility']}:</b> " f"{escape_html(accessibility)}"
                 )
             elif field == "changes_detail" and "changes_detail" in responses:
                 changes = _join_with_custom(
@@ -204,18 +200,14 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                     responses.get("custom_changes", []),
                 )
                 lines.append(
-                    f"<b>{label_mapping['changes_detail']}:</b> "
-                    f"{escape_html(changes)}"
+                    f"<b>{label_mapping['changes_detail']}:</b> " f"{escape_html(changes)}"
                 )
             elif field == "wishlist" and "wishlist" in responses:
                 wishlist = _join_with_custom(
                     responses.get("wishlist", []),
                     responses.get("custom_wishlist", []),
                 )
-                lines.append(
-                    f"<b>{label_mapping['wishlist']}:</b> "
-                    f"{escape_html(wishlist)}"
-                )
+                lines.append(f"<b>{label_mapping['wishlist']}:</b> " f"{escape_html(wishlist)}")
             elif field == "kremenchuk" and (
                 "kremenchuk" in responses or "custom_kremenchuk" in responses
             ):
@@ -225,8 +217,7 @@ def get_responses_text(ctx: AppContext, user_id: int, language: str) -> str:
                 )
                 if kremenchuk_text:
                     lines.append(
-                        f"<b>{label_mapping['kremenchuk']}:</b> "
-                        f"{escape_html(kremenchuk_text)}"
+                        f"<b>{label_mapping['kremenchuk']}:</b> " f"{escape_html(kremenchuk_text)}"
                     )
             elif field == "description":
                 label = label_mapping["description"]
@@ -332,9 +323,7 @@ def ask_which_responses_to_modify(
                 list(field_mapping.keys()),
             )
             dependency_fields = ["regularity", "noticed_changes", "changes_detail"]
-            offered_dependencies = [
-                field for field in dependency_fields if field in field_mapping
-            ]
+            offered_dependencies = [field for field in dependency_fields if field in field_mapping]
             if offered_dependencies:
                 dependency_values = {
                     field: ctx.sessions.get_data(user_id, field, "not set")
@@ -462,19 +451,24 @@ def clear_dependent_fields(
             if dep_field in ctx.sessions.get_data(user_id):
                 ctx.sessions.remove_data(user_id, dep_field)
                 cleared_fields.append(dep_field)
-                if dep_field == "changes_detail" and "custom_changes" in ctx.sessions.get_data(user_id):
+                if dep_field == "changes_detail" and "custom_changes" in ctx.sessions.get_data(
+                    user_id
+                ):
                     ctx.sessions.remove_data(user_id, "custom_changes")
                     cleared_fields.append("custom_changes")
     elif field == "noticed_changes":
         old_requires_detail = requires_changes_detail(str(old_value))
         new_requires_detail = requires_changes_detail(str(new_value))
-        if old_requires_detail and not new_requires_detail:
-            if "changes_detail" in ctx.sessions.get_data(user_id):
-                ctx.sessions.remove_data(user_id, "changes_detail")
-                cleared_fields.append("changes_detail")
-                if "custom_changes" in ctx.sessions.get_data(user_id):
-                    ctx.sessions.remove_data(user_id, "custom_changes")
-                    cleared_fields.append("custom_changes")
+        if (
+            old_requires_detail
+            and not new_requires_detail
+            and "changes_detail" in ctx.sessions.get_data(user_id)
+        ):
+            ctx.sessions.remove_data(user_id, "changes_detail")
+            cleared_fields.append("changes_detail")
+            if "custom_changes" in ctx.sessions.get_data(user_id):
+                ctx.sessions.remove_data(user_id, "custom_changes")
+                cleared_fields.append("custom_changes")
 
     if cleared_fields:
         ctx.flow_logger.info(

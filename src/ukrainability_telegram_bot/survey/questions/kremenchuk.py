@@ -22,7 +22,6 @@ from ...telegram_io import (
 )
 from .base import register, resolve_actions
 
-
 OTHER_OPTION_INDEX = 6
 
 
@@ -54,11 +53,7 @@ class KremenchukQuestion:
 
 def _options(language: str) -> list[str]:
     all_options = messages[language]["options"]["kremenchuk"]
-    return [
-        option
-        for idx, option in enumerate(all_options)
-        if idx != OTHER_OPTION_INDEX
-    ]
+    return [option for idx, option in enumerate(all_options) if idx != OTHER_OPTION_INDEX]
 
 
 def ask_kremenchuk(ctx: AppContext, chat_id: int, user_id: int, language: str) -> None:

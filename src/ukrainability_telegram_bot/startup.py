@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from .app import AppContext
 from .pseudonym import hash_user_id
-from .storage import get_latest_user_nickname
-from .storage import initialize_database as initialize_storage_database
+from .storage import get_latest_user_nickname, initialize_database as initialize_storage_database
 
 
 def initialize_database(ctx: AppContext) -> None:
@@ -51,12 +50,8 @@ def recover_user_sessions(ctx: AppContext) -> None:
                 recovered_count += 1
                 ctx.flow_logger.info(f"Recovered session for user {user_id}")
             except Exception as inner_exc:
-                ctx.flow_logger.error(
-                    f"Error recovering session for user {user_id}: {inner_exc}"
-                )
+                ctx.flow_logger.error(f"Error recovering session for user {user_id}: {inner_exc}")
 
-        ctx.flow_logger.info(
-            f"Session recovery complete. Recovered {recovered_count} sessions."
-        )
+        ctx.flow_logger.info(f"Session recovery complete. Recovered {recovered_count} sessions.")
     except Exception as exc:
         ctx.flow_logger.error(f"Error in session recovery process: {exc}")

@@ -39,14 +39,17 @@ def test_save_data_and_restart_skips_insert_when_consent_denied(monkeypatch, tmp
         app_context.sessions.profiles[user_id] = {"consent": False}
 
     try:
-        assert restart_question.save_data_and_restart(
-            app_context,
-            456,
-            user_id,
-            "en",
-            False,
-            restart_question.callbacks_from_context(app_context, actions),
-        ) is True
+        assert (
+            restart_question.save_data_and_restart(
+                app_context,
+                456,
+                user_id,
+                "en",
+                False,
+                restart_question.callbacks_from_context(app_context, actions),
+            )
+            is True
+        )
         with sqlite3.connect(app_context.config.db_file) as conn:
             count = conn.execute("SELECT COUNT(*) FROM responses").fetchone()[0]
         assert count == 0

@@ -220,9 +220,7 @@ def update_purpose_selection_keyboard(
                 )
             except telebot.apihelper.ApiTelegramException as exc:
                 if "message is not modified" not in str(exc):
-                    logging.exception(
-                        f"Error in update_purpose_selection_keyboard: {exc}"
-                    )
+                    logging.exception(f"Error in update_purpose_selection_keyboard: {exc}")
         else:
             try:
                 ctx.bot.edit_message_reply_markup(
@@ -232,8 +230,6 @@ def update_purpose_selection_keyboard(
                 )
             except telebot.apihelper.ApiTelegramException as exc:
                 if "message is not modified" not in str(exc):
-                    logging.exception(
-                        f"Error in update_purpose_selection_keyboard: {exc}"
-                    )
+                    logging.exception(f"Error in update_purpose_selection_keyboard: {exc}")
     except Exception as exc:
         logging.exception(f"Error in update_purpose_selection_keyboard: {exc}")

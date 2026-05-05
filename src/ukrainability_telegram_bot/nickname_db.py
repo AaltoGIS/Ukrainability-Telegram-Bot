@@ -5,12 +5,14 @@ from __future__ import annotations
 import datetime
 import random
 
-from .app import AppContext
 from . import nicknames
+from .app import AppContext
 from .pseudonym import hash_user_id
-from .storage import get_all_used_nicknames as fetch_all_used_nicknames
-from .storage import get_latest_user_nickname as fetch_latest_user_nickname
-from .storage import save_user_nickname as persist_user_nickname
+from .storage import (
+    get_all_used_nicknames as fetch_all_used_nicknames,
+    get_latest_user_nickname as fetch_latest_user_nickname,
+    save_user_nickname as persist_user_nickname,
+)
 
 
 def get_user_hash(ctx: AppContext, user_id: int) -> str:
@@ -45,8 +47,8 @@ def generate_unique_nickname(
     try:
         return nicknames.generate_unique_nickname(
             get_all_used_nicknames(ctx),
-            adjectives=nicknames.LEGACY_ADJECTIVES,
-            nouns=nicknames.LEGACY_NOUNS,
+            adjectives=nicknames.MONTHLY_NICKNAME_ADJECTIVES,
+            nouns=nicknames.MONTHLY_NICKNAME_NOUNS,
             separator=" ",
             number_range=1000,
             number_width=0,

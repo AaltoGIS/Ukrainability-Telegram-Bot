@@ -46,7 +46,7 @@ def callback_suffix(callback_data: str, prefix: str) -> str:
     marker = f"{prefix}_"
     if not callback_data.startswith(marker):
         raise ValueError(f"Unexpected callback prefix for {prefix}")
-    return callback_data[len(marker):]
+    return callback_data[len(marker) :]
 
 
 def callback_index(callback_data: str, prefix: str, options: list[str]) -> int:
@@ -111,9 +111,7 @@ def edit_keyboard(
 
     try:
         ctx.bot.edit_message_reply_markup(
-            chat_id=chat_id,
-            message_id=message_id,
-            reply_markup=new_keyboard
+            chat_id=chat_id, message_id=message_id, reply_markup=new_keyboard
         )
         return True
     except ApiTelegramException as e:
@@ -139,15 +137,14 @@ def safe_send_message(
     for attempt in range(max_retries):
         try:
             return ctx.bot.send_message(
-                chat_id,
-                text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode
+                chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode
             )
         except ApiTelegramException as e:
             if getattr(e, "error_code", None) == 429:
                 retry_after = telegram_retry_after(e, default=3)
-                ctx.flow_logger.warning(f"Rate limited, waiting {retry_after}s before retry {attempt+1}/{max_retries}")
+                ctx.flow_logger.warning(
+                    f"Rate limited, waiting {retry_after}s before retry {attempt+1}/{max_retries}"
+                )
                 time.sleep(retry_after)
                 continue
             if attempt < max_retries - 1:
@@ -189,7 +186,7 @@ def send_next_step_prompt(
 def escape_html(text: Any) -> str:
     if not isinstance(text, str):
         text = str(text)
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _language_for(ctx: AppContext, user_id: int) -> str:
@@ -217,7 +214,8 @@ def handle_callback_error(
         logging.exception(f"Error in {func_name}: {e}")
         language = _language_for(ctx, user_id)
         error_msg = messages[language].get(
-            'error_occurred', "An error occurred. Please try again later.")
+            "error_occurred", "An error occurred. Please try again later."
+        )
 
         if clear_callback_state is not None:
             clear_callback_state(user_id)
@@ -228,14 +226,14 @@ def handle_callback_error(
 
             inline_kb = types.InlineKeyboardMarkup()
             restart_text = messages[language]["restart_button"]
-            restart_button = types.InlineKeyboardButton(text=restart_text, callback_data='restart')
+            restart_button = types.InlineKeyboardButton(text=restart_text, callback_data="restart")
             inline_kb.add(restart_button)
 
             safe_send_message(
                 ctx,
                 chat_id,
                 messages[language]["callback_error_restart_prompt"],
-                reply_markup=inline_kb
+                reply_markup=inline_kb,
             )
         except Exception as send_error:
             logging.critical(f"Failed to send error message to user: {send_error}")
@@ -273,8 +271,12 @@ def safe_answer_callback(ctx: AppContext, call: Any, message: str) -> None:
             try:
                 user_id = call.from_user.id
                 language = _language_for(ctx, user_id)
-                ctx.bot.send_message(call.message.chat.id, messages[language].get(
-                    'error_occurred', "An error occurred. Please try again."))
+                ctx.bot.send_message(
+                    call.message.chat.id,
+                    messages[language].get(
+                        "error_occurred", "An error occurred. Please try again."
+                    ),
+                )
             except Exception:
                 pass
 
@@ -284,10 +286,6 @@ def hide_keyboard(ctx: AppContext, chat_id: int) -> None:
 
     try:
         remove_keyboard = types.ReplyKeyboardRemove()
-        ctx.bot.send_message(
-            chat_id,
-            "\u200B",
-            reply_markup=remove_keyboard
-        )
+        ctx.bot.send_message(chat_id, "\u200b", reply_markup=remove_keyboard)
     except Exception as e:
         logging.warning(f"Failed to hide keyboard: {e}")

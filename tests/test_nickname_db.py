@@ -21,12 +21,8 @@ def test_get_user_hash_uses_configured_salt(app_context):
 def test_nickname_persistence_returns_latest_month(app_context):
     user_hash = "user-hash"
 
-    nickname_db.save_user_nickname(
-        app_context, user_hash, "Bright Fox 0", month_year="2026-05"
-    )
-    nickname_db.save_user_nickname(
-        app_context, user_hash, "Wise Wolf 1", month_year="2026-06"
-    )
+    nickname_db.save_user_nickname(app_context, user_hash, "Bright Fox 0", month_year="2026-05")
+    nickname_db.save_user_nickname(app_context, user_hash, "Wise Wolf 1", month_year="2026-06")
 
     assert nickname_db.get_user_nickname(app_context, user_hash) == "Wise Wolf 1"
     assert nickname_db.get_all_used_nicknames(app_context) == {

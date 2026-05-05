@@ -18,5 +18,3 @@ flow_control.log
 *.db-wal
 voice_messages/
 *.enc
-AGENTS.md
-CLAUDE.md

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def main() -> None:
-    from .bot import run
     from .config import AppConfig
+    from .runtime import run
 
     run(AppConfig.from_env())

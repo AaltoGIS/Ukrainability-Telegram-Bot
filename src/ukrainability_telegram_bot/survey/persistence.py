@@ -148,14 +148,10 @@ def save_response(
             ctx.flow_logger.info(f"Inserted row ID: {last_id}")
             return True
         except sqlite3.Error as db_error:
-            ctx.flow_logger.error(
-                f"Database error attempt {db_connection_attempts}: {db_error}"
-            )
+            ctx.flow_logger.error(f"Database error attempt {db_connection_attempts}: {db_error}")
             if db_connection_attempts < max_db_attempts:
                 retry_delay = 2 ** (db_connection_attempts - 1)
-                ctx.flow_logger.info(
-                    f"Retrying database operation in {retry_delay} seconds"
-                )
+                ctx.flow_logger.info(f"Retrying database operation in {retry_delay} seconds")
                 sleep(retry_delay)
             else:
                 ctx.flow_logger.error("All database attempts failed, cannot save data")

@@ -1,12 +1,11 @@
-import sys
 import logging
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from cryptography.fernet import Fernet, MultiFernet
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -22,9 +21,7 @@ from ukrainability_telegram_bot.storage import initialize_database
 def make_mocked_telebot():
     bot = MagicMock()
     bot.message_handler = MagicMock(side_effect=lambda *args, **kwargs: lambda func: func)
-    bot.callback_query_handler = MagicMock(
-        side_effect=lambda *args, **kwargs: lambda func: func
-    )
+    bot.callback_query_handler = MagicMock(side_effect=lambda *args, **kwargs: lambda func: func)
     bot.get_me.return_value = SimpleNamespace(username="testbot")
     return bot
 

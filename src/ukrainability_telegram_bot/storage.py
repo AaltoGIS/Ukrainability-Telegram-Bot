@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
-
 
 RESPONSE_COLUMNS = (
     "nickname",
@@ -36,9 +35,7 @@ RESPONSE_COLUMNS = (
 )
 
 PLAINTEXT_COLUMNS = ("timestamp",)
-ENCRYPTED_COLUMNS = tuple(
-    column for column in RESPONSE_COLUMNS if column not in PLAINTEXT_COLUMNS
-)
+ENCRYPTED_COLUMNS = tuple(column for column in RESPONSE_COLUMNS if column not in PLAINTEXT_COLUMNS)
 
 
 def initialize_database(db_file: Path) -> None:
@@ -93,9 +90,7 @@ def initialize_database(db_file: Path) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_user_hash ON user_nicknames(user_hash)")
 
 
-def save_user_nickname(
-    db_file: Path, user_hash: str, nickname: str, month_year: str
-) -> None:
+def save_user_nickname(db_file: Path, user_hash: str, nickname: str, month_year: str) -> None:
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         conn.execute(
             """
@@ -106,7 +101,7 @@ def save_user_nickname(
         )
 
 
-def get_user_nickname(db_file: Path, user_hash: str, month_year: str) -> Optional[str]:
+def get_user_nickname(db_file: Path, user_hash: str, month_year: str) -> str | None:
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         cursor = conn.execute(
             """
@@ -119,7 +114,7 @@ def get_user_nickname(db_file: Path, user_hash: str, month_year: str) -> Optiona
     return row[0] if row else None
 
 
-def get_latest_user_nickname(db_file: Path, user_hash: str) -> Optional[str]:
+def get_latest_user_nickname(db_file: Path, user_hash: str) -> str | None:
     with sqlite3.connect(db_file, check_same_thread=False) as conn:
         cursor = conn.execute(
             """
