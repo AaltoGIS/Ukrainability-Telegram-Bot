@@ -58,6 +58,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "Alternatively, you can simply type the name of the location as a text message."
         ),
         'enjoyment_question': "How did you find your time spent at this place?",
+        'enjoyment_question_with_purposes': (
+            "How did you find your time spent at this place while engaging in: {purposes}?"
+        ),
         'enjoyment_options': [
             "Very enjoyable",
             "Enjoyable",
@@ -135,6 +138,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'selected': "Selected:",
         'unselected': "Unselected:",
         'you_selected': "You selected:",
+        'response_confirmed': "Response confirmed",
+        'select_option_first': "Please select an option first",
         'voice_message_submitted': "Voice message submitted.",
         'error_occurred': "An error occurred. Please try again later.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
@@ -153,6 +158,12 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'description_retry_or_skip': "Would you like to try again or skip the description?",
         'selections_saved': "Selections saved",
         'please_select_at_least_one': "Please select at least one option.",
+        'visitor_type_custom_instruction': (
+            "You can also type your own suggestion as a text message. When finished, press Done."
+        ),
+        'accessibility_custom_instruction': (
+            "You can also type your own mode of travel as a text message. When finished, press Done."
+        ),
         'labels': {
             'location': 'Location',
             'enjoyment': 'Enjoyment',
@@ -295,6 +306,9 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
             "4. Натисніть 'Надіслати вибране розташування'."
         ),
         'enjoyment_question': "Як вам сподобався ваш час, проведений у цьому місці?",
+        'enjoyment_question_with_purposes': (
+            "Як вам сподобався ваш час, проведений у цьому місці, займаючись: {purposes}?"
+        ),
         'enjoyment_options': [
             "Дуже сподобався",
             "Сподобався",
@@ -372,6 +386,8 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         'selected': "Вибрано:",
         'unselected': "Знято вибір:",
         'you_selected': "Ви обрали:",
+        'response_confirmed': "Відповідь підтверджено",
+        'select_option_first': "Спочатку виберіть варіант",
         'voice_message_submitted': "Голосове повідомлення надіслано.",
         'error_occurred': "Виникла помилка. Будь ласка, спробуйте пізніше.",
         'error_occurred_bilingual': "An error occurred. Please try again later. / Виникла помилка. Будь ласка, спробуйте пізніше.",
@@ -390,6 +406,12 @@ By clicking 'I agree', I confirm that I am 18+ years old, have received sufficie
         ),
         'description_retry_or_skip': "Хочете спробувати знову чи пропустити опис?",
         'selections_saved': "Вибір збережено",
+        'visitor_type_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
+        'accessibility_custom_instruction': (
+            "Ви також можете ввести власний варіант у полі введення тексту. Коли закінчите, натисніть Готово."
+        ),
         'labels': {
             'location': 'Локація',
             'enjoyment': 'Якість часу',
