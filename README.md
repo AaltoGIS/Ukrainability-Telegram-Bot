@@ -129,6 +129,7 @@ this repository only prepares the package for building and publishing.
 ```text
 src/ukrainability_telegram_bot/
   app.py        # AppContext dependency container
+  _legacy.py    # temporary legacy survey flow, pending question-module migration
   bot.py        # compatibility shim re-exporting runtime entrypoints
   cli.py        # ukrainability-bot entrypoint
   cleanup.py    # voice retention and cleanup scheduler
@@ -138,7 +139,6 @@ src/ukrainability_telegram_bot/
   sessions.py   # thread-safe user/session/message-id state
   storage.py    # SQLite helpers
   survey/
-    legacy_flow.py # legacy survey flow, kept behind runtime wiring during refactor
     persistence.py # response row building/encryption/insertion
     questions/     # extracted pilot question modules
   telegram_io.py # Telegram send/edit/callback helpers

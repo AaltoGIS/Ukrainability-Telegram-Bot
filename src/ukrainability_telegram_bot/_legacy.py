@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-
-
 """Runtime Telegram bot implementation.
 
 This module intentionally preserves the legacy survey behavior while moving
@@ -21,26 +16,26 @@ from pathlib import Path
 import telebot
 from telebot import types
 
-from ..messages import messages
-from ..pseudonym import hash_user_id
-from .. import runtime as runtime_module
-from ..runtime import flow_logger
-from ..storage import initialize_database as initialize_storage_database
-from .persistence import (
+from .messages import messages
+from .pseudonym import hash_user_id
+from . import runtime as runtime_module
+from .runtime import flow_logger
+from .storage import initialize_database as initialize_storage_database
+from .survey.persistence import (
     DatabaseSaveError,
     EncryptionUnavailableError,
     save_response,
 )
-from .questions import consent as consent_question
-from .questions import description as description_question
-from .questions import purpose as purpose_question
-from .questions.base import (
+from .survey.questions import consent as consent_question
+from .survey.questions import description as description_question
+from .survey.questions import purpose as purpose_question
+from .survey.questions.base import (
     ConsentCallbacks,
     DescriptionCallbacks,
     PurposeCallbacks,
 )
-from .. import telegram_io as telegram_io_module
-from ..telegram_io import (
+from . import telegram_io as telegram_io_module
+from .telegram_io import (
     callback_index,
     callback_suffix,
     escape_html,

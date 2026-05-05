@@ -92,12 +92,14 @@ bot_username = None
 _active_context: AppContext | None = None
 
 
-def _load_legacy_flow() -> Any:
+def _load_legacy_handlers() -> Any:
     """Import legacy survey handlers so their temporary decorators are registered."""
 
-    from .survey import legacy_flow
+    # TODO(phase-5-final): remove this temporary import bridge once
+    # register_handlers(ctx) replaces HandlerRegistry.
+    from . import _legacy
 
-    return legacy_flow
+    return _legacy
 
 
 def require_active_context() -> AppContext:
@@ -157,7 +159,7 @@ def configure_runtime(
     global _active_context
 
     _configure_logging(config)
-    _load_legacy_flow()
+    _load_legacy_handlers()
     token = config.telegram_bot_token
     local_storage_dir = str(config.storage_dir)
     voice_files_dir = str(config.voice_files_dir)
@@ -255,11 +257,13 @@ def run(
 ) -> None:
     if config is None:
         config = AppConfig.from_env()
-    legacy_flow = _load_legacy_flow()
+    legacy_handlers = _load_legacy_handlers()
+    # TODO(phase-5-final): remove these fallbacks once register_handlers(ctx)
+    # replaces HandlerRegistry and startup tasks have dedicated runtime owners.
     if initialize_database is None:
-        initialize_database = legacy_flow.initialize_database
+        initialize_database = legacy_handlers.initialize_database
     if recover_user_sessions is None:
-        recover_user_sessions = legacy_flow.recover_user_sessions
+        recover_user_sessions = legacy_handlers.recover_user_sessions
     ctx = configure_runtime(config)
 
     startup_message = f"Bot starting with username: {bot_username}"
