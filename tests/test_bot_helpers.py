@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ukrainability_telegram_bot import bot
+from ukrainability_telegram_bot import _legacy as bot
 
 
 def test_telegram_retry_after_coerces_string_and_caps():
