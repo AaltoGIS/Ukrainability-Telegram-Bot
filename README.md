@@ -168,10 +168,9 @@ start cleanup threads. Runtime effects live behind `configure_runtime()`,
 
 ## Exporting decrypted data
 
-The responses table stores every field except timestamp as Fernet ciphertext, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
+The responses table stores encrypts submissions with Fernet, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
 
-```export ENCRYPTION_KEY="your-fernet-key"
-
+```
 python export_responses.py \
     --db        "$UKRAINABILITY_STORAGE_DIR/responses_kremenchuk.db" \
     --out       responses_kremenchuk_anon.csv \
