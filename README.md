@@ -169,6 +169,7 @@ start cleanup threads. Runtime effects live behind `configure_runtime()`,
 ## Exporting decrypted data
 
 The responses table stores every field except timestamp as Fernet ciphertext, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
+
 ```export ENCRYPTION_KEY="your-fernet-key"
 
 python export_responses.py \
@@ -183,7 +184,9 @@ The decrypted CSV and voice messages (if any) contain personal, often also sensi
 ## GDPR compliance
 
 The bot is designed to make compliance with the EU General Data Protection Regulation feasible for small research teams. The bot stores data in pseudonymous form: response fields are encrypted with Fernet, and the user_hash column in both responses and user_nicknames is HMAC-SHA-256(telegram_user_id, UKRAINABILITY_USER_HASH_SALT) instead of the raw Telegram ID. While the controller holds the salt, this is pseudonymous personal data under GDPR — risk-reduced compared to identified data, but still personal data. Anonymisation happens at export time: `export_responses.py` drops user_hash from the output and keeps only the nickname that was already stored alongside each response. Nicknames are randomly drawn from a fixed pool when a participant first appears in a given month and have no mathematical relationship to the Telegram user ID; with user_hash removed, the exported CSV contains no salt-derived identifier and cannot be relinked to a Telegram user.
+
 **Lawful use** - forks must add an explicit consent step at the start of the survey describing purpose, retention, controller contact, recipients, and rights. Participants identify themselves by the nickname the bot showed them and the month they participated - use them to erase data subject's submissions, if needed. Voice messages should be erased upon manual content recognition. 
+
 **Key and salt management** - ENCRYPTION_KEY(S) and UKRAINABILITY_USER_HASH_SALT are part of the security boundary. They should live outside the database backup, ideally in a secrets manager or an encrypted credentials file referenced by UKRAINABILITY_CREDENTIALS_FILE. The database alone reveals nothing; the database with the keys reveals everything. Loss of the keys is, by design, equivalent to deletion.
 
 
