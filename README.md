@@ -164,24 +164,54 @@ start cleanup threads. Runtime effects live behind `configure_runtime()`,
 9. **Cleanup** - `cleanup.py` runs a background scheduler that deletes encrypted
    voice files past their retention window.
    ([cleanup.py](src/ukrainability_telegram_bot/cleanup.py))
+10. **Export** - `export.py` decrypts response rows and voice files for
+    controlled analysis outside the bot.
+    ([export.py](src/ukrainability_telegram_bot/export.py))
 
 ## Exporting decrypted data
 
-The responses table stores encrypted submissions with Fernet, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
+The responses table stores encrypted submissions with Fernet, and voice
+messages are stored as encrypted `.enc` files. To work with the data outside
+the bot, decrypt with the same key or rotated key list the bot was running
+with. Set `ENCRYPTION_KEY` or `ENCRYPTION_KEYS`; if `UKRAINABILITY_STORAGE_DIR`
+points at the live storage directory, the minimal export command is:
 
+```bash
+ukrainability-export --out responses_kremenchuk_anon.csv
 ```
-python export_responses.py \
-    --db        "$UKRAINABILITY_STORAGE_DIR/responses_kremenchuk.db" \
-    --out       responses_kremenchuk_anon.csv \
+
+Use explicit paths when exporting from a backup or a non-default directory:
+
+```bash
+ukrainability-export \
+    --db "$UKRAINABILITY_STORAGE_DIR/responses_kremenchuk.db" \
+    --out responses_kremenchuk_anon.csv \
     --voice-dir "$UKRAINABILITY_STORAGE_DIR/voice_messages" \
     --voice-out voice_decrypted
 ```
-The decrypted CSV and voice messages (if any) contain personal, often also sensitive data and should be handled accordingly: store it on a filesystem with restricted permissions, never commit it to git, and treat its disposal with the same care as the encryption key itself.
+
+From a source checkout, `python export_responses.py --out responses.csv` remains
+available as a convenience launcher for the same command.
+
+The decrypted CSV and voice messages (if any) contain personal, often also
+sensitive data and should be handled accordingly: store them on a filesystem
+with restricted permissions, never commit them to git, and treat disposal with
+the same care as the encryption key itself.
 
 
 ## GDPR compliance
 
-The bot is designed to make compliance with the EU General Data Protection Regulation feasible for small research teams. The bot stores data in pseudonymous form: response fields are encrypted with Fernet, and the user_hash column in both responses and user_nicknames is HMAC-SHA-256(telegram_user_id, UKRAINABILITY_USER_HASH_SALT) instead of the raw Telegram ID. While the controller holds the salt, this is pseudonymous personal data under GDPR — risk-reduced compared to identified data, but still personal data. Anonymisation happens at export time: `export_responses.py` drops user_hash from the output and keeps only the nickname that was already stored alongside each response. Nicknames are randomly drawn from a fixed pool when a participant first appears in a given month and have no mathematical relationship to the Telegram user ID; with user_hash removed, the exported CSV contains no salt-derived identifier and cannot be relinked to a Telegram user.
+The bot is designed to make compliance with the EU General Data Protection
+Regulation feasible for small research teams. The bot stores data in
+pseudonymous form: response fields are encrypted with Fernet, and raw Telegram
+user IDs are never written to SQLite. While the controller holds the salt, the
+salted HMAC pseudonym is pseudonymous personal data under GDPR: risk-reduced
+compared to identified data, but still personal data. Anonymisation is built
+into the schema: the `responses` table stores the rotating monthly nickname,
+never `user_hash`. The salt-derived `user_hash` lives only in the separate
+`user_nicknames` lookup table, which is not exported. Nicknames are randomly
+drawn from a fixed pool when a participant first appears in a given month and
+have no mathematical relationship to the Telegram user ID.
 
 **Lawful use** - forks must add an explicit consent step at the start of the survey describing purpose, retention, controller contact, recipients, and rights. Participants identify themselves by the nickname the bot showed them and the month they participated - use them to erase data subject's submissions, if needed. Voice messages should be erased upon manual content recognition. 
 
