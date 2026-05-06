@@ -2,7 +2,6 @@
 
 [![codecov](https://codecov.io/gh/AaltoGIS/Ukrainability-Telegram-Bot/branch/main/graph/badge.svg)](https://codecov.io/gh/AaltoGIS/Ukrainability-Telegram-Bot)
 
-<!-- TODO: add citation to the accompanying article once confirmed -->
 The Ukrainability Telegram Bot turns Telegram, a messenger already used daily by
 many people, into a low-cost, anonymous public participatory GIS (PPGIS) tool
 for mapping how people experience outdoor places, designed with GDPR-oriented
@@ -168,7 +167,7 @@ start cleanup threads. Runtime effects live behind `configure_runtime()`,
 
 ## Exporting decrypted data
 
-The responses table stores encrypts submissions with Fernet, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
+The responses table stores encrypted submissions with Fernet, and voice messages are stored as encrypted .enc files. To work with the data outside the bot, decrypt with the same key(s) the bot was running with. Set ENCRYPTION_KEY (or ENCRYPTION_KEYS if you have rotated keys), then run the `export_responses.py`. Typical usage:
 
 ```
 python export_responses.py \

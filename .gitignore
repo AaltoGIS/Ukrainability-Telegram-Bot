@@ -19,3 +19,10 @@ flow_control.log
 voice_messages/
 *.enc
 .coverage
+Claude.md
+Agents.md
+
+# Decrypted exports from export_responses.py — never commit
+*.csv
+voice_decrypted/
+*.ogg
