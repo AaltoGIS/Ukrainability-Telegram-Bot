@@ -25,7 +25,7 @@ Use Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/AaltoGIS/Ukrainability-Telegram-Bot.git
-cd UkrainabilityTelegramBot
+cd Ukrainability-Telegram-Bot
 python3 -m pip install .
 cp .env.example .env
 ```
