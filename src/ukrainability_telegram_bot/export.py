@@ -36,9 +36,12 @@ def load_encryption_keys(
 ) -> tuple[str, tuple[str, ...]]:
     """Load the active Fernet key and retiring keys from env or credentials."""
 
-    env = os.environ if environ is None else environ
-    if load_dotenv_file and config.load_dotenv is not None:
-        config.load_dotenv()
+    if environ is None:
+        env = os.environ
+        if load_dotenv_file and config.load_dotenv is not None:
+            config.load_dotenv()
+    else:
+        env = environ
 
     credentials_file = Path(
         env.get("UKRAINABILITY_CREDENTIALS_FILE", config.DEFAULT_CREDENTIALS_FILE)
@@ -81,11 +84,14 @@ def export_responses(db_path: Path, out_csv: Path, fernet: MultiFernet) -> int:
     encrypted_cols = set(storage.ENCRYPTED_COLUMNS)
     drop_cols = {"id"}
 
-    with sqlite3.connect(db_path) as con:
+    con = sqlite3.connect(db_path)
+    try:
         con.row_factory = sqlite3.Row
         cur = con.execute("SELECT * FROM responses ORDER BY timestamp")
         columns = [description[0] for description in cur.description]
         rows = cur.fetchall()
+    finally:
+        con.close()
 
     out_columns = [column for column in columns if column not in drop_cols]
     out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +107,11 @@ def export_responses(db_path: Path, out_csv: Path, fernet: MultiFernet) -> int:
                     decrypted = decrypt_field(fernet, row[column])
                     if decrypted == DECRYPT_FAILED:
                         failed += 1
+                        logger.warning(
+                            "Decrypt failed for column %s in response row %s",
+                            column,
+                            row["id"],
+                        )
                     out_row.append(decrypted)
                 else:
                     out_row.append(row[column])
@@ -168,9 +179,12 @@ def main(
 ) -> None:
     """Run the export command."""
 
-    env = os.environ if environ is None else environ
-    if load_dotenv_file and config.load_dotenv is not None:
-        config.load_dotenv()
+    if environ is None:
+        env = os.environ
+        if load_dotenv_file and config.load_dotenv is not None:
+            config.load_dotenv()
+    else:
+        env = environ
 
     parser = _build_parser(env)
     args = parser.parse_args(argv)

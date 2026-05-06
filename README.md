@@ -190,8 +190,9 @@ ukrainability-export \
     --voice-out voice_decrypted
 ```
 
-From a source checkout, `python export_responses.py --out responses.csv` remains
-available as a convenience launcher for the same command.
+From a source checkout, `python -m ukrainability_telegram_bot.export --out
+responses.csv` and `python export_responses.py --out responses.csv` remain
+available as convenience launchers for the same command.
 
 The decrypted CSV and voice messages (if any) contain personal, often also
 sensitive data and should be handled accordingly: store them on a filesystem

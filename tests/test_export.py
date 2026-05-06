@@ -120,12 +120,16 @@ def test_export_voice_creates_output_directory(app_context, tmp_path):
     assert out_dir.is_dir()
 
 
-def test_main_integration_end_to_end(app_context, tmp_path):
+def test_main_integration_end_to_end(app_context, tmp_path, monkeypatch):
+    def fail_if_called():
+        raise AssertionError("load_dotenv should not run when environ is explicit")
+
     _insert_encrypted_row(app_context, nickname="ExportNick", timestamp="2025-01-01 12:00:00")
     voice_dir = tmp_path / "voice_messages"
     voice_dir.mkdir()
     (voice_dir / "VoiceNick.enc").write_bytes(app_context.fernet.encrypt(b"voice"))
     out_csv = tmp_path / "out.csv"
+    monkeypatch.setattr(export.config, "load_dotenv", fail_if_called)
 
     result = export.main(
         ["--out", str(out_csv)],
@@ -133,7 +137,6 @@ def test_main_integration_end_to_end(app_context, tmp_path):
             "ENCRYPTION_KEY": app_context.config.encryption_key,
             "UKRAINABILITY_STORAGE_DIR": str(tmp_path),
         },
-        load_dotenv_file=False,
     )
 
     assert result is None
@@ -150,6 +153,26 @@ def test_main_missing_key_raises(tmp_path):
         )
 
 
+def test_main_no_voice_skips_voice_export(app_context, tmp_path):
+    _insert_encrypted_row(app_context, nickname="ExportNick", timestamp="2025-01-01 12:00:00")
+    voice_dir = tmp_path / "voice_messages"
+    voice_dir.mkdir()
+    (voice_dir / "VoiceNick.enc").write_bytes(app_context.fernet.encrypt(b"voice"))
+    out_csv = tmp_path / "out.csv"
+
+    export.main(
+        ["--out", str(out_csv), "--no-voice"],
+        environ={
+            "ENCRYPTION_KEY": app_context.config.encryption_key,
+            "UKRAINABILITY_STORAGE_DIR": str(tmp_path),
+        },
+        load_dotenv_file=False,
+    )
+
+    assert out_csv.exists()
+    assert not (tmp_path / "voice_decrypted").exists()
+
+
 def test_load_encryption_keys_supports_rotation():
     active = Fernet.generate_key().decode("ascii")
     retiring = Fernet.generate_key().decode("ascii")
@@ -162,6 +185,20 @@ def test_load_encryption_keys_supports_rotation():
     encrypted_with_retiring_key = Fernet(retiring.encode("ascii")).encrypt(b"rotated")
 
     assert fernet.decrypt(encrypted_with_retiring_key) == b"rotated"
+
+
+def test_load_encryption_keys_skips_dotenv_when_environ_supplied(monkeypatch):
+    encryption_key = Fernet.generate_key().decode("ascii")
+
+    def fail_if_called():
+        raise AssertionError("load_dotenv should not run when environ is explicit")
+
+    monkeypatch.setattr(export.config, "load_dotenv", fail_if_called)
+
+    assert export.load_encryption_keys({"ENCRYPTION_KEY": encryption_key}) == (
+        encryption_key,
+        (),
+    )
 
 
 def test_load_encryption_keys_reads_credentials_file(tmp_path):
