@@ -16,6 +16,8 @@ except ImportError:  # pragma: no cover - dependency is installed in normal use
 
 DEFAULT_STORAGE_DIR = "/home/ubuntu/kremenchuk"
 DEFAULT_CREDENTIALS_FILE = "/home/ubuntu/kremenchuk/secure/credentials"
+RESPONSES_DB_FILENAME = "responses_kremenchuk.db"
+VOICE_MESSAGES_DIRNAME = "voice_messages"
 logger = logging.getLogger(__name__)
 
 
@@ -38,11 +40,11 @@ class AppConfig:
 
     @property
     def db_file(self) -> Path:
-        return self.storage_dir / "responses_kremenchuk.db"
+        return self.storage_dir / RESPONSES_DB_FILENAME
 
     @property
     def voice_files_dir(self) -> Path:
-        return self.storage_dir / "voice_messages"
+        return self.storage_dir / VOICE_MESSAGES_DIRNAME
 
     @classmethod
     def from_env(
@@ -56,10 +58,10 @@ class AppConfig:
             load_dotenv()
 
         credentials_file = Path(env.get("UKRAINABILITY_CREDENTIALS_FILE", DEFAULT_CREDENTIALS_FILE))
-        credentials = _read_export_file(credentials_file)
+        credentials = read_export_file(credentials_file)
 
         token = env.get("TELEGRAM_BOT_TOKEN") or credentials.get("TELEGRAM_BOT_TOKEN")
-        encryption_keys = _split_keys(
+        encryption_keys = split_keys(
             env.get("ENCRYPTION_KEYS") or credentials.get("ENCRYPTION_KEYS", "")
         )
         encryption_key = (
@@ -105,7 +107,7 @@ class AppConfig:
         )
 
 
-def _read_export_file(path: Path) -> Mapping[str, str]:
+def read_export_file(path: Path) -> Mapping[str, str]:
     """Read shell-style ``export NAME=value`` lines from a credentials file."""
 
     values: dict[str, str] = {}
@@ -132,7 +134,9 @@ def _read_export_file(path: Path) -> Mapping[str, str]:
     return values
 
 
-def _split_keys(value: str) -> tuple[str, ...]:
+def split_keys(value: str) -> tuple[str, ...]:
+    """Split a comma-separated key list into stripped non-empty keys."""
+
     return tuple(key.strip() for key in value.split(",") if key.strip())
 
 
