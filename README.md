@@ -85,7 +85,7 @@ export UKRAINABILITY_VOICE_RETENTION_DAYS="30"
 export UKRAINABILITY_CLEANUP_INTERVAL_SECONDS="86400"
 ```
 
-`UKRAINABILITY_STORAGE_DIR` defaults to `/home/ubuntu/kremenchuk`. The optional
+`UKRAINABILITY_STORAGE_DIR` defaults to `/home/ubuntu/kremenchuk`, , which is specific to the original Kremenchuk deployment and almost certainly does not exist on your machine. Forks should override this before the first run — the bot creates the directory at startup and writes the SQLite database, encrypted voice files, and log files there. The optional
 credentials file can contain the same shell-style exports as `.env`:
 
 ```bash
