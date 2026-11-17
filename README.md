@@ -16,7 +16,8 @@ Ukraine, where 219 participants mapped 230 places. Submitted data is visualised
 on an interactive dashboard at https://ukrainability.space/, integrated into the
 bot as a Telegram mini-app, so contributing data and exploring it happen in the
 same place. The codebase is designed to be forked and adapted for similar
-studies in other cities and on other messenger platforms.
+studies in other cities and on other messenger platforms. Check out the preprint: Karasov, O., Rinne, T., Järv, O., & Tenkanen, H. (2026). Mapping quality time: Telegram as a public participatory GIS for cultural ecosystem services. Center for Open Science. https://doi.org/10.31235/osf.io/42jxy_v1
+
 
 ## Quick Start
 
